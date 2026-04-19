@@ -1,13 +1,13 @@
-use crate::{config::Config, store::Store};
+use crate::{config::AppConfig, store::Store};
 
 /// Top-level application handle. Wires configuration to runtime components.
 pub struct App {
-    pub config: Config,
+    pub config: AppConfig,
     pub store: Store,
 }
 
 impl App {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: AppConfig) -> Self {
         Self {
             config,
             store: Store::new(),
