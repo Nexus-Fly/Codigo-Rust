@@ -1,0 +1,310 @@
+﻿cargo :    Compiling codigo_rust v0.1.0 (C:\Hackatons\Nexus-Fly\codigo_rust)
+En línea: 1 Carácter: 1
++ cargo test --no-fail-fast 2>&1 | Out-File "C:\Hackatons\Nexus-Fly\cod ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling co...ly\codigo_rust) 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: unused import: `std::time::Duration`
+   --> tests\payment_tests.rs:231:9
+    |
+231 |     use std::time::Duration;
+    |         ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> tests\payment_tests.rs:188:9
+    |
+188 |     let mut bids = broadcast(&mut agents, SwarmMessage::OrderCreated {
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `bids`
+   --> tests\payment_tests.rs:188:9
+    |
+188 |     let mut bids = broadcast(&mut agents, SwarmMessage::OrderCreated {
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an 
+underscore: `_bids`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by 
+default
+
+warning: unused import: `std::collections::HashMap`
+ --> tests\protocol_tests.rs:9:5
+  |
+9 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> tests\protocol_tests.rs:52:9
+   |
+52 |     let mut agent_close = NexusAgent::new("c", AgentType::Drone, "v", 
+1.0, 1.0, 100.0, 10.0, 0);
+   |         ----^^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> tests\protocol_tests.rs:53:9
+   |
+53 |     let mut agent_far   = NexusAgent::new("f", AgentType::Drone, "v", 
+100.0, 100.0, 100.0, 10.0, 0);
+   |         ----^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> tests\protocol_tests.rs:298:9
+    |
+298 |     let mut a_new = NexusAgent::new("new", AgentType::Drone, "v", 0.0, 
+0.0, 100.0, 10.0, 0);
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: unused variable: `out`
+   --> tests\protocol_tests.rs:351:13
+    |
+351 |         let out = broadcast(&mut agents, SwarmMessage::OrderCreated {
+    |             ^^^ help: if this is intentional, prefix it with an 
+underscore: `_out`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by 
+default
+
+warning: unused imports: `Point` and `SwarmMessage`
+  --> src\main.rs:15:36
+   |
+15 | use types::{AgentType, NexusAgent, Point, SwarmMessage};
+   |                                    ^^^^^  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `codigo_rust` (test "payment_tests") generated 3 warnings (run `cargo 
+fix --test "payment_tests" -p codigo_rust` to apply 3 suggestions)
+warning: fields `order_id`, `pickup`, `delivery`, `weight`, `escrow_amount`, 
+and `winner` are never read
+  --> src\auction.rs:7:9
+   |
+ 6 | pub struct AuctionState {
+   |            ------------ fields in this struct
+ 7 |     pub order_id:       OrderId,
+   |         ^^^^^^^^
+ 8 |     pub pickup:         Point,
+   |         ^^^^^^
+ 9 |     pub delivery:       Point,
+   |         ^^^^^^^^
+10 |     pub weight:         f64,
+   |         ^^^^^^
+11 |     pub escrow_amount:  u64,
+   |         ^^^^^^^^^^^^^
+12 |     pub bids:           HashMap<AgentId, f64>, // agent_id ÔåÆ score
+13 |     pub winner:         Option<AgentId>,
+   |         ^^^^^^
+   |
+   = note: `AuctionState` has a derived impl for the trait `Debug`, but this 
+is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `determine_winner` is never used
+  --> src\auction.rs:63:12
+   |
+33 | impl AuctionBook {
+   | ---------------- method in this implementation
+...
+63 |     pub fn determine_winner(&mut self, order_id: OrderId) -> 
+Option<AgentId> {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: variants `PaymentSent`, `Complete`, and `Failed` are never constructed
+ --> src\handoff.rs:7:5
+  |
+5 | pub enum HandoffPhase {
+  |          ------------ variants in this enum
+6 |     Requested,
+7 |     PaymentSent,
+  |     ^^^^^^^^^^^
+8 |     Complete,
+  |     ^^^^^^^^
+9 |     Failed,
+  |     ^^^^^^
+  |
+  = note: `HandoffPhase` has derived impls for the traits `Clone` and `Debug`, 
+but these are intentionally ignored during dead code analysis
+
+warning: multiple fields are never read
+  --> src\handoff.rs:14:9
+   |
+13 | pub struct HandoffState {
+   |            ------------ fields in this struct
+14 |     pub handoff_id:  HandoffId,
+   |         ^^^^^^^^^^
+15 |     pub order_id:    OrderId,
+   |         ^^^^^^^^
+16 |     pub from_agent:  AgentId,
+   |         ^^^^^^^^^^
+17 |     pub to_agent:    AgentId,
+   |         ^^^^^^^^
+18 |     pub point:       Point,
+   |         ^^^^^
+19 |     pub phase:       HandoffPhase,
+   |         ^^^^^
+20 |     pub payment_pct: f64, // fraction of escrow paid on handoff (0.30)
+   |         ^^^^^^^^^^^
+   |
+   = note: `HandoffState` has a derived impl for the trait `Debug`, but this 
+is intentionally ignored during dead code analysis
+
+warning: methods `mark_payment_sent`, `mark_complete`, `mark_failed`, 
+`handoffs_for_agent`, and `handoff_payment_amount` are never used
+  --> src\handoff.rs:56:12
+   |
+30 | impl HandoffManager {
+   | ------------------- methods in this implementation
+...
+56 |     pub fn mark_payment_sent(&mut self, handoff_id: HandoffId) {
+   |            ^^^^^^^^^^^^^^^^^
+...
+63 |     pub fn mark_complete(&mut self, handoff_id: HandoffId) {
+   |            ^^^^^^^^^^^^^
+...
+70 |     pub fn mark_failed(&mut self, handoff_id: HandoffId) {
+   |            ^^^^^^^^^^^
+...
+77 |     pub fn handoffs_for_agent(&self, agent_id: &str) -> Vec<HandoffId> {
+   |            ^^^^^^^^^^^^^^^^^^
+...
+87 |     pub fn handoff_payment_amount(&self, handoff_id: HandoffId, 
+total_escrow: u64) -> u64 {
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `is_failed` and `drain_pending_re_auction` are never used
+  --> src\healing.rs:50:12
+   |
+13 | impl FailureDetector {
+   | -------------------- methods in this implementation
+...
+50 |     pub fn is_failed(&self, agent_id: &str) -> bool {
+   |            ^^^^^^^^^
+...
+54 |     pub fn drain_pending_re_auction(&mut self) -> Vec<OrderId> {
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `alert_id` is never read
+ --> src\safety.rs:6:9
+  |
+5 | pub struct SafetyZone {
+  |            ---------- field in this struct
+6 |     pub alert_id: AlertId,
+  |         ^^^^^^^^
+  |
+  = note: `SafetyZone` has derived impls for the traits `Clone` and `Debug`, 
+but these are intentionally ignored during dead code analysis
+
+warning: method `active_zones` is never used
+  --> src\safety.rs:46:12
+   |
+18 | impl SafetyMesh {
+   | --------------- method in this implementation
+...
+46 |     pub fn active_zones(&self) -> Vec<&SafetyZone> {
+   |            ^^^^^^^^^^^^
+
+warning: `codigo_rust` (test "protocol_tests") generated 5 warnings (run 
+`cargo fix --test "protocol_tests" -p codigo_rust` to apply 5 suggestions)
+warning: `codigo_rust` (bin "codigo_rust" test) generated 9 warnings (run 
+`cargo fix --bin "codigo_rust" -p codigo_rust --tests` to apply 1 suggestion)
+warning: `codigo_rust` (bin "codigo_rust") generated 9 warnings (9 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.24s
+     Running unittests src\lib.rs 
+(target\debug\deps\codigo_rust-188f21011455f8c9.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs 
+(target\debug\deps\codigo_rust-055ee71cebfacea7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\payment_tests.rs 
+(target\debug\deps\payment_tests-a377a47577c91ed5.exe)
+
+running 19 tests
+test test_client_escrow_signature_is_deterministic ... ok
+test test_balance_query_ignored_for_other_agent ... ok
+test test_balance_query_response ... ok
+test test_escrow_timeout_recovery ... ok
+test test_double_spend_prevented_by_duplicate_escrow ... ok
+test test_proof_hash_is_deterministic ... ok
+test test_escrow_return_on_failure ... ok
+test test_escrow_lock_and_release ... ok
+test test_invalid_client_signature_rejected ... ok
+test test_handoff_payment_30_pct_of_escrow ... ok
+test test_full_payment_flow ... ok
+test test_tampered_message_fails_verification ... ok
+test test_transfer_between_agents ... ok
+test test_sign_and_verify ... ok
+test test_proof_hash_differs_for_different_inputs ... ok
+test test_transfer_insufficient_balance_fails ... ok
+test test_release_already_released_escrow ... ok
+test test_validator_signature ... ok
+test test_wrong_key_fails_verification ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\protocol_tests.rs 
+(target\debug\deps\protocol_tests-ad169498585cc8a9.exe)
+
+running 30 tests
+test test_agent_state_broadcast ... ok
+test test_agent_ignores_handoff_not_for_it ... ok
+test test_agent_state_received ... ok
+test test_agent_recovery_clears_failed_state ... ok
+test test_agent_bids_on_order ... ok
+test test_auction_book_records_bids ... ok
+test test_auction_winner_highest_score ... ok
+test test_auction_no_bids_returns_none ... ok
+test test_agent_status_becomes_busy_when_wins ... ok
+test test_all_message_types_serialise ... ok
+test test_bid_score_increases_with_closer_agent ... ok
+test test_bid_score_higher_with_better_reputation ... ok
+test test_bid_score_zero_when_insufficient_capacity ... ok
+test test_failure_detection_triggers_re_auction ... ok
+test test_failure_escrow_recovery ... ok
+test test_failure_message_handled ... ok
+test test_handoff_complete_emitted ... ok
+test test_handoff_manager_initiates ... ok
+test test_message_round_trip_serialisation ... ok
+test test_multihop_drone_to_robot_to_ebike ... ok
+test test_multiple_orders_independent ... ok
+test test_multiple_safety_zones ... ok
+test test_point_distance ... ok
+test test_recovery_message_handled ... ok
+test test_reputation_increases_with_deliveries ... ok
+test test_reputation_zero_assignments ... ok
+test test_safety_alert_freezes_agent_inside_radius ... ok
+test test_safety_alert_prevents_bidding ... ok
+test test_safety_clear_allows_bidding_again ... ok
+test test_safety_clear_unfreezes ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codigo_rust
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
