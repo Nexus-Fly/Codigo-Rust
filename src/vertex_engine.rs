@@ -35,12 +35,16 @@ impl VertexEngine {
 
         let engine = Engine::start(&context, socket, options, &key, peer_set, false)?;
 
+        tracing::info!("Vertex engine started on {bind_addr}");
+        tracing::debug!("BFT consensus active – waiting for quorum with peers");
+
         Ok(Self { engine })
     }
 
     /// Broadcast a `SwarmMessage` as a Vertex transaction.
     pub fn send(&self, msg: &SwarmMessage) -> Result<()> {
         let bytes = msg.to_bytes()?;
+        tracing::debug!("Sending transaction ({} bytes): {:?}", bytes.len(), msg);
         let mut tx = Transaction::allocate(bytes.len());
         tx.copy_from_slice(&bytes);
         self.engine.send_transaction(tx)?;
@@ -52,13 +56,22 @@ impl VertexEngine {
     pub async fn recv(&self) -> Result<Option<SwarmMessage>> {
         loop {
             match self.engine.recv_message().await? {
-                None => return Ok(None),
-                Some(Message::SyncPoint(_)) => continue,
+                None => {
+                    tracing::debug!("Engine closed recv channel");
+                    return Ok(None);
+                }
+                Some(Message::SyncPoint(_)) => {
+                    tracing::debug!("SyncPoint – BFT round committed, no transactions");
+                    continue;
+                }
                 Some(Message::Event(event)) => {
-                    // Take the first transaction from the event
+                    tracing::debug!("Event received with {} transaction(s)", event.transactions().count());
                     for tx in event.transactions() {
                         match SwarmMessage::from_bytes(tx) {
-                            Ok(msg) => return Ok(Some(msg)),
+                            Ok(msg) => {
+                                tracing::debug!("Decoded SwarmMessage: {:?}", msg);
+                                return Ok(Some(msg));
+                            }
                             Err(e) => {
                                 tracing::warn!("Failed to decode transaction: {e}");
                             }
