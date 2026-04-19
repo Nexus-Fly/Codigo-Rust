@@ -2,6 +2,7 @@ use anyhow::Result;
 use tashi_vertex::{Context, Engine, KeySecret, Message, Options, Peers, Socket, Transaction};
 
 use crate::codec::{decode_message, encode_message};
+use crate::config::AppConfig;
 use crate::types::NexusMessage;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,6 +21,19 @@ pub struct VertexNode {
 }
 
 impl VertexNode {
+    /// Build a [`VertexNode`] directly from a loaded [`AppConfig`].
+    ///
+    /// Parses the secret key and peer list from the config file fields.
+    pub async fn from_config(config: &AppConfig) -> Result<Self> {
+        let key: KeySecret = config.secret_key.parse()?;
+        let peers: Vec<(&str, &str)> = config
+            .peers
+            .iter()
+            .map(|p| (p.address.as_str(), p.public_key.as_str()))
+            .collect();
+        Self::start(&config.bind, key, peers).await
+    }
+
     /// Start a Vertex node: create context, bind socket, launch engine.
     ///
     /// `bind`  — local address to listen on, e.g. `"127.0.0.1:8001"`.
