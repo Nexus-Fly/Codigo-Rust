@@ -1,0 +1,35 @@
+# Build artifacts – kept in Docker named volumes, not needed in image
+target/
+
+# Version control
+.git/
+.gitignore
+
+# IDE / editor directories
+.idea/
+.vscode/
+.devcontainer/
+
+# Node (not used, but safe to exclude if ever added)
+node_modules/
+dist/
+
+# Common build output names
+build/
+out/
+
+# Temporary and OS files
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Docker files themselves (no need to re-copy them into the image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README-docker.md

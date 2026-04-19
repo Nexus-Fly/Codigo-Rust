@@ -1,0 +1,32 @@
+services:
+  vertex-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vertex_swarm_demo_dev
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    entrypoint: ["/usr/local/bin/dev-entrypoint.sh"]
+    command: ["bash"]
+    volumes:
+      # Bind-mount source so edits on the host are reflected immediately
+      - .:/workspace
+      # Named volumes keep Cargo caches and build artifacts inside Docker,
+      # avoiding Windows/WSL path-permission conflicts
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - target:/workspace/target
+    ports:
+      - "8001:8001"
+      - "8002:8002"
+      - "8003:8003"
+      - "8004:8004"
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUST_BACKTRACE=1
+
+volumes:
+  cargo_registry:
+  cargo_git:
+  target:
