@@ -1,110 +1,111 @@
-mod agent;
-mod auction;
-mod crypto;
-mod handoff;
-mod healing;
-mod payments;
-mod safety;
-mod types;
-mod vertex_engine;
+use std::str::{from_utf8, FromStr};
 
-use anyhow::Result;
+use anyhow::anyhow;
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
+use tashi_vertex::{
+    Context, Engine, KeyPublic, KeySecret, Message, Options, Peers, Socket, Transaction,
+};
 
-use types::{AgentType, NexusAgent, Point, SwarmMessage};
-use agent::AgentRuntime;
-use vertex_engine::VertexEngine;
+#[derive(Debug, Clone)]
+struct PeerArg {
+    pub address: String,
+    pub public: KeyPublic,
+}
 
-/// NexusFly – P2P delivery coordination with trustless micropayments.
-#[derive(Parser, Debug)]
-#[command(author, version, about)]
-struct Cli {
-    /// Base58-encoded Ed25519 secret key for this node.
-    #[arg(short = 'K', long)]
-    secret_key: String,
+impl FromStr for PeerArg {
+    type Err = anyhow::Error;
 
-    /// Local bind address (host:port).
-    #[arg(short = 'B', long, default_value = "127.0.0.1:9000")]
-    bind_addr: String,
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (public, address) = s
+            .split_once('@')
+            .ok_or_else(|| anyhow!("Formato inválido. Usa <public_key>@<ip:puerto>"))?;
 
-    /// Peer addresses in `<public_key_b58>@<host:port>` format (repeatable).
-    #[arg(short = 'P', long)]
-    peer: Vec<String>,
+        let public = public.parse()?;
+        let address = address.to_string();
 
-    /// Agent identifier.
-    #[arg(long, default_value = "agent-001")]
-    agent_id: String,
+        Ok(PeerArg { address, public })
+    }
+}
 
-    /// Agent type: drone | robot | ebike.
-    #[arg(long, default_value = "drone")]
-    agent_type: String,
+#[derive(Debug, Parser)]
+#[command(name = "vertex-node")]
+#[command(about = "Nodo de prueba para Tashi Vertex")]
+struct Args {
+    /// Dirección local donde este nodo escucha
+    #[arg(short = 'B', long = "bind")]
+    pub bind: String,
 
-    /// Initial token balance.
-    #[arg(long, default_value_t = 100)]
-    balance: u64,
+    /// Clave secreta Base58 del nodo
+    #[arg(short = 'K', long = "key")]
+    pub key: String,
+
+    /// Peers remotos en formato <public_key>@<ip:puerto>
+    #[arg(short = 'P', long = "peer")]
+    pub peers: Vec<PeerArg>,
+
+    /// Mensaje inicial que se enviará al arrancar
+    #[arg(short = 'M', long = "message", default_value = "PING")]
+    pub message: String,
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    // RUST_LOG toma precedencia; si no está definida, usamos "info" como fallback.
-    let filter = if std::env::var("RUST_LOG").is_ok() {
-        EnvFilter::from_default_env()
-    } else {
-        EnvFilter::new("info")
-    };
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+async fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
 
-    let cli = Cli::parse();
+    let key = args.key.parse::<KeySecret>()?;
 
-    let agent_type = match cli.agent_type.as_str() {
-        "robot" => AgentType::GroundRobot,
-        "ebike" => AgentType::Ebike,
-        _       => AgentType::Drone,
-    };
+    // Crear conjunto de peers
+    let mut peers = Peers::with_capacity(args.peers.len() + 1)?;
+    for peer in &args.peers {
+        peers.insert(&peer.address, &peer.public, Default::default())?;
+    }
 
-    let agent = NexusAgent::new(
-        &cli.agent_id,
-        agent_type,
-        "NexusFly",
-        0.0, 0.0,
-        100.0, 5.0,
-        cli.balance,
-    );
+    // Agregarnos a nosotros mismos
+    peers.insert(&args.bind, &key.public(), Default::default())?;
+    println!(":: Red configurada con {} peers", args.peers.len() + 1);
 
-    tracing::info!("[{}] Starting – balance: {} tokens", agent.id, agent.balance);
+    // Runtime/contexto de Vertex
+    let context = Context::new()?;
+    println!(":: Context inicializado");
 
-    // Parse peers: "<pub_b58>@<addr>"
-    let peers: Vec<(String, String)> = cli.peer.iter().map(|p| {
-        let mut parts = p.splitn(2, '@');
-        let pub_key = parts.next().unwrap_or("").to_string();
-        let addr    = parts.next().unwrap_or("").to_string();
-        (addr, pub_key)
-    }).collect();
+    // Bind del socket local
+    let socket = Socket::bind(&context, &args.bind).await?;
+    println!(":: Socket escuchando en {}", args.bind);
 
-    let engine = VertexEngine::start(&cli.secret_key, &cli.bind_addr, peers).await?;
-    let mut runtime = AgentRuntime::new(agent);
+    // Opciones del motor
+    let mut options = Options::default();
+    options.set_report_gossip_events(true);
+    options.set_fallen_behind_kick_s(10);
 
-    // Broadcast initial state
-    let state_msg = runtime.broadcast_state();
-    engine.send(&state_msg)?;
+    // false = iniciar nueva sesión, igual que el ejemplo oficial actual
+    let engine = Engine::start(&context, socket, options, &key, peers, false)?;
+    println!(":: Engine iniciado");
 
-    loop {
-        // Tick heartbeat
-        runtime.tick();
+    // Enviar transacción inicial
+    send_transaction_cstr(&engine, &args.message)?;
+    println!(":: Transacción inicial enviada: {}", args.message);
 
-        // Receive next consensus message
-        match engine.recv().await? {
-            None => {
-                tracing::info!("Engine shut down");
-                break;
-            }
-            Some(msg) => {
-                runtime.handle(msg);
-                // Send any queued outbound messages
-                for out in runtime.drain_outbox() {
-                    engine.send(&out)?;
+    // Escuchar mensajes ordenados por consenso
+    while let Some(message) = engine.recv_message().await? {
+        match message {
+            Message::Event(event) => {
+                if event.transaction_count() > 0 {
+                    println!("\n> EVENT");
+                    println!("  - Creator: {}", event.creator());
+                    println!("  - Created at: {}", event.created_at());
+                    println!("  - Consensus at: {}", event.consensus_at());
+                    println!("  - Transactions: {}", event.transaction_count());
+
+                    for tx in event.transactions() {
+                        match from_utf8(&tx) {
+                            Ok(text) => println!("  - TX: {}", text.trim_end_matches('\0')),
+                            Err(_) => println!("  - TX (binaria): {:?}", tx),
+                        }
+                    }
                 }
+            }
+            Message::SyncPoint(_) => {
+                println!("\n> SYNC POINT");
             }
         }
     }
@@ -112,3 +113,10 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Envía una transacción string null-terminated, igual que el ejemplo oficial.
+fn send_transaction_cstr(engine: &Engine, s: &str) -> tashi_vertex::Result<()> {
+    let mut transaction = Transaction::allocate(s.len() + 1);
+    transaction[..s.len()].copy_from_slice(s.as_bytes());
+    transaction[s.len()] = 0;
+    engine.send_transaction(transaction)
+}
