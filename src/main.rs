@@ -1,3 +1,12 @@
+mod app;
+mod codec;
+mod config;
+mod consensus;
+mod domain;
+mod sim;
+mod store;
+mod types;
+
 use std::str::{from_utf8, FromStr};
 
 use anyhow::anyhow;
