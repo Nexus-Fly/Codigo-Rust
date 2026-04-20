@@ -20,6 +20,7 @@ use crate::{
 // MvpFlowResult
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct MvpFlowResult {
     pub order_id: String,

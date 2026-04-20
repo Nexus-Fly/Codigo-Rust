@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::Result;
 use tashi_vertex::{Context, Engine, KeySecret, Message, Options, Peers, Socket, Transaction};
 

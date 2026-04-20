@@ -60,6 +60,7 @@ pub struct AppConfig {
 /// let cfg = load_config("config/node1.toml").unwrap();
 /// println!("{}", cfg.bind);
 /// ```
+#[allow(dead_code)]
 pub fn load_config(path: &str) -> Result<AppConfig> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("Cannot read config file: {path}"))?;

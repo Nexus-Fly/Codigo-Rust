@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::types::{SafetyZone, Timestamp};
+use crate::types::SafetyZone;
 
 // ---------------------------------------------------------------------------
 // SafetyMonitor
@@ -49,6 +49,7 @@ impl SafetyMonitor {
     }
 
     /// Snapshot of all currently active zone ids (useful for logging/debugging).
+    #[allow(dead_code)]
     pub fn active_zone_ids(&self) -> Vec<&str> {
         self.zones
             .values()
@@ -59,26 +60,22 @@ impl SafetyMonitor {
 }
 
 // ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
-
-fn zone(zone_id: &str, cx: f64, cy: f64, radius_m: f32, active: bool) -> SafetyZone {
-    SafetyZone {
-        zone_id: zone_id.to_owned(),
-        center: (cx, cy),
-        radius_m,
-        active,
-        declared_at: 0 as Timestamp,
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn zone(zone_id: &str, cx: f64, cy: f64, radius_m: f32, active: bool) -> SafetyZone {
+        SafetyZone {
+            zone_id: zone_id.to_owned(),
+            center: (cx, cy),
+            radius_m,
+            active,
+            declared_at: 0u64,
+        }
+    }
 
     #[test]
     fn agent_inside_radius_is_paused() {

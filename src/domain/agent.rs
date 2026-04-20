@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::types::NodeId;
 
 /// Represents a participant node in the swarm.
