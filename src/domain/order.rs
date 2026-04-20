@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{bail, Result};
 
 use crate::types::{NexusMessage, NodeId, Order, OrderStatus, Timestamp};

@@ -1,4 +1,6 @@
-﻿use anyhow::{bail, Result};
+﻿#![allow(dead_code)]
+
+use anyhow::{bail, Result};
 
 use crate::{
     config::AppConfig,
@@ -288,8 +290,310 @@ fn log_event(label: &str, msg: &NexusMessage) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// LiveSim – tick-based simulation state machine
 // ---------------------------------------------------------------------------
+
+/// Simulation phases, executed one per tick.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SimPhase {
+    Init,
+    OrderCreated,
+    BidsReceived,
+    WinnerChosen,
+    MovingToPickup,
+    PickupCompleted,
+    InTransit,
+    HandoffRequested,
+    HandoffCompleted,
+    Delivered,
+    LedgerSettled,
+    Done,
+}
+
+/// State for the live, tick-driven simulation.
+pub struct LiveSim {
+    agents: Vec<SimAgent>,
+    tick: u32,
+    phase: SimPhase,
+
+    // mutable delivery state built up across ticks
+    order_id: String,
+    winner_id: NodeId,
+    delivering_agent: NodeId,
+    ledger: Ledger,
+    reauction_candidates: Vec<String>,
+    safety_paused: bool,
+}
+
+impl LiveSim {
+    const PICKUP: (f64, f64) = (40.7128, -74.0060);
+    const DROPOFF: (f64, f64) = (40.7580, -73.9855);
+    const ESCROW: u64 = 300;
+    const HANDOFF_FEE: u64 = 100;
+    const HEARTBEAT_TIMEOUT: u64 = 30;
+    const BASE_T: Timestamp = 1_700_000_000;
+
+    pub fn new(configs: Vec<AppConfig>) -> Self {
+        let agents = configs.into_iter().map(SimAgent::new).collect();
+        Self {
+            agents,
+            tick: 0,
+            phase: SimPhase::Init,
+            order_id: String::new(),
+            winner_id: String::new(),
+            delivering_agent: String::new(),
+            ledger: Ledger::new(),
+            reauction_candidates: Vec::new(),
+            safety_paused: false,
+        }
+    }
+
+    pub fn current_tick(&self) -> u32 {
+        self.tick
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.phase == SimPhase::Done
+    }
+
+    /// Advance one simulation tick. Returns a log line for this tick.
+    pub fn step(&mut self) -> Result<String> {
+        let t = Self::BASE_T + self.tick as u64;
+        let log = match self.phase {
+            SimPhase::Init => {
+                self.order_id = format!("order-{}", self.tick);
+                let msg = format!(
+                    "[t={}] simulation started — {} agent(s) online",
+                    self.tick,
+                    self.agents.len()
+                );
+                // drain 1 battery per tick
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::OrderCreated;
+                msg
+            }
+
+            SimPhase::OrderCreated => {
+                let origin = self.agents[0].config.node_id.clone();
+                let (order, _) = order_fsm::create_order(
+                    &self.order_id,
+                    origin.clone(),
+                    Self::PICKUP,
+                    Self::DROPOFF,
+                    t,
+                );
+                let _ = order_fsm::mark_bidding(order, t)?;
+                self.phase = SimPhase::BidsReceived;
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                format!("[t={}] order created  id={}", self.tick, self.order_id)
+            }
+
+            SimPhase::BidsReceived => {
+                let bids: Vec<AuctionBid> = self
+                    .agents
+                    .iter()
+                    .map(|a| a.build_bid(&self.order_id, Self::PICKUP))
+                    .collect();
+                let summary: Vec<String> = bids
+                    .iter()
+                    .map(|b| format!("{}(eta={}s,bat={}%)", b.bidder, b.eta_s, b.battery_pct))
+                    .collect();
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::WinnerChosen;
+                format!("[t={}] bids received  [{}]", self.tick, summary.join(", "))
+            }
+
+            SimPhase::WinnerChosen => {
+                let bids: Vec<AuctionBid> = self
+                    .agents
+                    .iter()
+                    .map(|a| a.build_bid(&self.order_id, Self::PICKUP))
+                    .collect();
+                self.winner_id = auction::choose_winner_id(&bids)
+                    .ok_or_else(|| anyhow::anyhow!("no bids submitted"))?;
+
+                // credit + reserve escrow
+                let payer = self.agents[0].config.node_id.clone();
+                self.ledger.credit(payer.clone(), Self::ESCROW);
+                self.ledger.reserve_escrow(
+                    self.order_id.clone(),
+                    payer,
+                    Self::ESCROW,
+                )?;
+
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::MovingToPickup;
+                format!("[t={}] winner chosen  winner={}", self.tick, self.winner_id)
+            }
+
+            SimPhase::MovingToPickup => {
+                // move winner agent toward pickup (linear interpolation step)
+                if let Some(winner) = self.agents.iter_mut().find(|a| a.config.node_id == self.winner_id) {
+                    let (tx, ty) = Self::PICKUP;
+                    let dx = tx - winner.state.location.0;
+                    let dy = ty - winner.state.location.1;
+                    let step = 0.1_f64.min((dx * dx + dy * dy).sqrt());
+                    let norm = ((dx * dx + dy * dy).sqrt()).max(f64::EPSILON);
+                    winner.state.location.0 += dx / norm * step;
+                    winner.state.location.1 += dy / norm * step;
+                    winner.state.battery_pct = winner.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::PickupCompleted;
+                format!(
+                    "[t={}] moving toward pickup  winner={} loc=({:.4},{:.4})",
+                    self.tick,
+                    self.winner_id,
+                    self.agents
+                        .iter()
+                        .find(|a| a.config.node_id == self.winner_id)
+                        .map(|a| a.state.location.0)
+                        .unwrap_or(0.0),
+                    self.agents
+                        .iter()
+                        .find(|a| a.config.node_id == self.winner_id)
+                        .map(|a| a.state.location.1)
+                        .unwrap_or(0.0),
+                )
+            }
+
+            SimPhase::PickupCompleted => {
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::InTransit;
+                format!("[t={}] pickup completed  holder={}", self.tick, self.winner_id)
+            }
+
+            SimPhase::InTransit => {
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::HandoffRequested;
+                format!("[t={}] in transit  holder={}", self.tick, self.winner_id)
+            }
+
+            SimPhase::HandoffRequested => {
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                if self.agents.len() >= 3 {
+                    let dest = self
+                        .agents
+                        .iter()
+                        .find(|a| a.config.node_id != self.winner_id)
+                        .map(|a| a.config.node_id.clone())
+                        .expect("at least one other agent");
+                    self.delivering_agent = dest.clone();
+                    self.phase = SimPhase::HandoffCompleted;
+                    format!("[t={}] handoff requested  from={} to={}", self.tick, self.winner_id, dest)
+                } else {
+                    self.delivering_agent = self.winner_id.clone();
+                    self.phase = SimPhase::Delivered;
+                    format!("[t={}] no handoff (fewer than 3 agents)  holder={}", self.tick, self.winner_id)
+                }
+            }
+
+            SimPhase::HandoffCompleted => {
+                self.ledger.transfer_for_handoff(
+                    &self.order_id,
+                    self.winner_id.clone(),
+                    self.delivering_agent.clone(),
+                    Self::HANDOFF_FEE,
+                )?;
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::Delivered;
+                format!(
+                    "[t={}] handoff completed  from={} to={}  fee={}",
+                    self.tick, self.winner_id, self.delivering_agent, Self::HANDOFF_FEE
+                )
+            }
+
+            SimPhase::Delivered => {
+                for a in &mut self.agents {
+                    a.state.battery_pct = a.state.battery_pct.saturating_sub(1);
+                }
+                self.phase = SimPhase::LedgerSettled;
+                format!("[t={}] delivered  by={}", self.tick, self.delivering_agent)
+            }
+
+            SimPhase::LedgerSettled => {
+                self.ledger.release_final_payment(
+                    &self.order_id,
+                    self.delivering_agent.clone(),
+                )?;
+
+                // failure detection
+                let mut tracker = HeartbeatTracker::new();
+                for a in &self.agents {
+                    tracker.record_heartbeat(a.config.node_id.clone(), t);
+                }
+                let fail_time = t + Self::HEARTBEAT_TIMEOUT + 1;
+                for a in self.agents.iter().skip(1) {
+                    tracker.record_heartbeat(a.config.node_id.clone(), fail_time - 1);
+                }
+                let failed_id = self.agents[0].config.node_id.clone();
+                let (dummy, _) = order_fsm::create_order(
+                    "sim-reauction-1",
+                    failed_id.clone(),
+                    Self::PICKUP,
+                    Self::DROPOFF,
+                    t,
+                );
+                let dummy = order_fsm::mark_bidding(dummy, t)?;
+                let (dummy, _) = order_fsm::assign_order(dummy, failed_id, t)?;
+                self.reauction_candidates =
+                    tracker.orders_to_reauction(std::iter::once(&dummy), fail_time, Self::HEARTBEAT_TIMEOUT);
+
+                // safety check
+                let mut safety = SafetyMonitor::new();
+                safety.add_alert(SafetyZone {
+                    zone_id: "zone-alpha".into(),
+                    center: Self::PICKUP,
+                    radius_m: 0.01,
+                    active: true,
+                    declared_at: t,
+                });
+                self.safety_paused = safety.is_paused_by_safety(Self::PICKUP.0, Self::PICKUP.1);
+
+                let bal = self.ledger.balances.get(&self.delivering_agent).copied().unwrap_or(0);
+                self.phase = SimPhase::Done;
+                format!(
+                    "[t={}] ledger settled  {} balance={}  reauction={:?}  safety_paused={}",
+                    self.tick, self.delivering_agent, bal, self.reauction_candidates, self.safety_paused
+                )
+            }
+
+            SimPhase::Done => {
+                format!("[t={}] simulation already complete", self.tick)
+            }
+        };
+
+        self.tick += 1;
+        Ok(log)
+    }
+
+    /// Drive the simulation in real time, sleeping 1 second between ticks.
+    pub async fn run_live(&mut self) -> Result<()> {
+        while !self.is_complete() {
+            let line = self.step()?;
+            println!("{line}");
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        Ok(())
+    }
+}
+
+
 
 #[cfg(test)]
 mod tests {
