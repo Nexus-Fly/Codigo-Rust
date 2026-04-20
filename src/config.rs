@@ -47,6 +47,21 @@ pub struct AppConfig {
     pub battery: u8,
     /// Max simultaneous orders this agent can carry.
     pub capacity: u8,
+
+    // ── Order generation ──────────────────────────────────────────────────
+    /// If true, this node emits new OrderCreated intents periodically.
+    /// Only one node in a cluster should be the order source.
+    /// Defaults to false.
+    #[serde(default)]
+    pub auto_order_source: bool,
+    /// How often (in seconds) this node emits a new order, when
+    /// `auto_order_source = true`. Defaults to 20 seconds.
+    #[serde(default = "default_order_interval_secs")]
+    pub order_interval_secs: u64,
+}
+
+fn default_order_interval_secs() -> u64 {
+    20
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

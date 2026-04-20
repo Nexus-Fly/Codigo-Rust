@@ -80,11 +80,8 @@ async fn main() -> Result<()> {
     println!("[node] vertex engine started — node is live");
 
     // ── Runtime state (local to this binary, NOT App) ──────────────────────
-    // Per-node offset within the 20-tick order-creation window so that nodes
-    // don't all emit OrderCreated on the same tick. Uses a simple byte-sum
-    // hash that gives distinct values for "node1"/"node2"/"node3" (11/12/13).
-    let order_emit_tick: u64 =
-        node_id.bytes().fold(0u64, |a, b| a.wrapping_add(b as u64)) % 20;
+    let auto_order_source  = config.auto_order_source;
+    let order_interval     = config.order_interval_secs.max(1);
 
     let mut tick: u64 = 0;
     let mut order_seq: u64 = 0;
@@ -122,13 +119,13 @@ async fn main() -> Result<()> {
                 // Always broadcast a heartbeat so peers know we're alive.
                 let _ = send_nexus(&engine, &app.heartbeat());
 
-                // Periodically create a new order if this node is idle.
-                // Stagger offset computed once before the loop.
-                if tick % 20 == order_emit_tick {
+                // Periodically create a new order — only if this node is
+                // configured as an order source and is not currently busy.
+                if auto_order_source && tick % order_interval == 0 {
                     let busy = is_busy(&app, &node_id) || !pending_sends.is_empty();
                     if !busy {
                         order_seq += 1;
-                        let order_id = format!("{}-order-{}", node_id, order_seq);
+                        let order_id = format!("order-{}-{:04}", node_id, order_seq);
                         let pickup  = (40.7128 + order_seq as f64 * 0.001, -74.0060);
                         let dropoff = (40.7580 - order_seq as f64 * 0.001, -73.9855);
                         let (_, order_msg) = order_fsm::create_order(

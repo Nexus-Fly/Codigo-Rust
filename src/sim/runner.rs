@@ -1085,6 +1085,8 @@ mod tests {
             y,
             battery,
             capacity: 1,
+            auto_order_source: false,
+            order_interval_secs: 20,
         }
     }
 

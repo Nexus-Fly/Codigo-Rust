@@ -58,5 +58,7 @@ fn make_config(id: &str, kind: AgentKind, x: f64, y: f64, battery: u8) -> AppCon
         y,
         battery,
         capacity: 1,
+        auto_order_source: false,
+        order_interval_secs: 20,
     }
 }

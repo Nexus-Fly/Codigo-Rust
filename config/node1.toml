@@ -14,6 +14,10 @@ y          = -74.0060
 battery    = 100
 capacity   = 1
 
+# This node generates new delivery orders automatically.
+auto_order_source   = true
+order_interval_secs = 20
+
 [[peers]]
 id         = "node2"
 address    = "127.0.0.1:8002"
