@@ -67,6 +67,11 @@ impl App {
         Self::new(config)
     }
 
+    /// Return an `AgentState` heartbeat message for this node without mutating state.
+    pub fn heartbeat(&self) -> NexusMessage {
+        NexusMessage::AgentState(self.local_agent.clone())
+    }
+
     // -----------------------------------------------------------------------
     // Message handler (called per decoded NexusMessage from the swarm)
     // -----------------------------------------------------------------------

@@ -38,11 +38,12 @@ RUN mkdir -p src/bin \
     && cargo fetch \
     && rm -rf src
 
-# ── Entrypoint script ─────────────────────────
+# ── Entrypoint scripts ────────────────────────
 COPY scripts/dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
+COPY scripts/node-entrypoint.sh /usr/local/bin/node-entrypoint.sh
 # Strip Windows CRLF and set executable
-RUN sed -i 's/\r$//' /usr/local/bin/dev-entrypoint.sh \
-    && chmod +x /usr/local/bin/dev-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/dev-entrypoint.sh /usr/local/bin/node-entrypoint.sh \
+    && chmod +x /usr/local/bin/dev-entrypoint.sh /usr/local/bin/node-entrypoint.sh
 
 # ── Default: interactive shell via entrypoint ─
 ENTRYPOINT ["/usr/local/bin/dev-entrypoint.sh"]

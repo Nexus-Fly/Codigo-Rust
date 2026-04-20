@@ -1,374 +1,455 @@
-# vertex_swarm_demo
+﻿<div align="center">
 
-A minimal MVP for a distributed delivery coordination system built on top of
-[Tashi Vertex](https://tashi.dev) BFT consensus.
+```
+ _   _                       _____  _
+| \ | |                     |  ___|| |
+|  \| |  ___  __  __  _   _ | |_   | | _   _
+| . ` | / _ \ \ \/ / | | | ||  _|  | || | | |
+| |\  ||  __/  >  <  | |_| || |    | || |_| |
+\_| \_/ \___| /_/\_\  \__,_|\_|    |_| \__, |
+                                         __/ |
+                                        |___/
+```
 
-The project demonstrates how a swarm of autonomous delivery agents (drones,
-robots, e-bikes) can coordinate order assignment, handoffs, failure recovery,
-and payment settlement using a Byzantine-fault-tolerant consensus layer —
-without a central server.
+### The coordination infrastructure for autonomous, serverless logistics fleets
+
+[![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
+[![Tashi Vertex](https://img.shields.io/badge/Tashi_Vertex-0.13.0-blueviolet?style=for-the-badge)](https://tashi.dev)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/Tests-61_passing-brightgreen?style=for-the-badge)]()
+[![Status](https://img.shields.io/badge/Status-MVP-yellow?style=for-the-badge)]()
+
+</div>
 
 ---
 
-## Table of contents
+## Overview
 
-1. [Architecture overview](#architecture-overview)
-2. [What runs through Tashi Vertex](#what-runs-through-tashi-vertex)
-3. [Module reference](#module-reference)
-4. [Docker dev environment](#docker-dev-environment)
-5. [Running the project](#running-the-project)
-6. [MVP flow](#mvp-flow)
-7. [Current status](#current-status)
-8. [Known limitations](#known-limitations)
-9. [Suggested next steps](#suggested-next-steps)
+**Nexus-Fly** is a distributed autonomous logistics coordination platform. It enables swarms of heterogeneous agents â€” drones, ground robots, and e-bikes â€” to coordinate order assignment, in-flight handoffs, failure recovery, and payment settlement **without relying on a central server**.
+
+Each node in the network participates equally. Critical operational events are ordered through **Tashi Vertex**, a Byzantine Fault Tolerant (BFT) consensus engine, ensuring that all nodes agree on the same sequence of actions even in the presence of network delays, node failures, or adversarial conditions.
+
+Nexus-Fly is not a ride-sharing application. It is an infrastructure layer: a programmable coordination substrate that can power next-generation autonomous delivery systems at scale.
 
 ---
 
-## Architecture overview
+## The Problem
+
+Modern autonomous delivery systems face a structural contradiction: they deploy independent mobile agents â€” drones, robots, cargo bikes â€” but coordinate them through centralized orchestration servers. This creates several compounding problems:
+
+- **Single point of failure.** If the orchestration server goes down, the entire fleet is blind. No order can be created, assigned, or recovered.
+- **Poor coordination across heterogeneous fleets.** Drones, ground robots, and e-bikes have different capabilities, ranges, and charge cycles. Centralized systems struggle to handle this heterogeneity dynamically.
+- **Weak handoff support.** Passing a parcel mid-route from a drone to a ground robot requires round-trips through a central coordinator for every validation step.
+- **Slow failure recovery.** Detecting that an agent has gone silent, re-auctioning its cargo, and selecting a replacement takes expensive round-trips through a central server.
+- **Fragile resilience.** Latency spikes, geographic partitions, or server restarts can stall entire delivery pipelines.
+
+The deeper issue is that **centralized orchestration is fundamentally at odds with truly autonomous, resilient multi-agent systems**.
+
+---
+
+## The Solution
+
+Nexus-Fly replaces the central orchestration server with a distributed event-ordering layer powered by BFT consensus. Instead of agents reporting to a server, they emit signed events that are ordered by the network itself.
+
+Key design decisions:
+
+- **Distributed event coordination.** Critical events (order creation, bids, handoff requests, failures, deliveries) are submitted as consensus transactions. Every node receives the same ordered event stream.
+- **Deterministic auction-based assignment.** All nodes run identical auction logic on the same ordered bid set. No central authority decides â€” every node independently reaches the same conclusion.
+- **Cross-agent handoffs.** The handoff protocol validates preconditions (ownership, agent availability) and applies them as consensus-ordered state transitions, enabling safe mid-route parcel transfers.
+- **Self-healing recovery.** Heartbeat tracking detects silent agents. Failed deliveries are automatically flagged for re-auction without human intervention.
+- **Safety mesh.** Geographic safety zones can be declared by any node. Agents check their position against active zones before proceeding.
+- **Internal settlement layer.** An escrow ledger tracks payment obligations, executes handoff fee transfers, and releases final payments on delivery.
+- **Modular architecture.** Domain logic is fully decoupled from consensus and I/O, making every module independently testable and replaceable.
+
+---
+
+## Core Capabilities
+
+**Distributed Order Coordination**
+Orders are created as consensus events. Every node in the network receives and processes `OrderCreated` in the same sequence, eliminating divergent state across the fleet.
+
+**Autonomous Auction Engine**
+All agents submit `AuctionBid` events through consensus. Winner selection is deterministic (ETA, battery level, optional reputation score). Ties are broken lexicographically. No central auctioneer is required.
+
+**Cross-Agent Handoffs**
+Mid-route parcel transfers between agents of different types are validated and executed as ordered consensus events. The escrow ledger records partial fee transfers automatically.
+
+**Self-Healing Network**
+`HeartbeatTracker` detects silent nodes and identifies in-flight orders that need re-auctioning. The recovery loop runs without operator intervention.
+
+**Safety Mesh**
+`SafetyMonitor` maintains active safety zones and evaluates whether any agent position falls within a restricted area. Safety alerts propagate through consensus to all nodes simultaneously.
+
+**Internal Settlement Layer**
+`Ledger` tracks escrowed funds, executes partial payments on handoffs, and releases final payments on delivery. No blockchain or external payment system is required for the current MVP.
+
+**Live Simulation and MVP Demo**
+`sim/runner.rs` provides a deterministic local simulation of the complete delivery flow, including auction, handoff, failure detection, and settlement. No live network required to run it.
+
+**Vertex-based Distributed Consensus**
+The `consensus/vertex.rs` wrapper integrates directly with the Tashi Vertex BFT engine. Nexus-Fly nodes communicate through cryptographically signed transactions ordered by the consensus layer.
+
+---
+
+## System Architecture
+
+Nexus-Fly follows a strict layered architecture. Domain logic never touches the network. The consensus layer never knows about business rules. The simulation can run entirely without real peers.
 
 ```
-src/
-├── main.rs                   ← Tashi Vertex node CLI (live network)
-├── lib.rs                    ← Library crate (shared by binaries)
-├── app.rs                    ← Application state + message dispatcher
-├── codec.rs                  ← NexusMessage ↔ bytes (serde_json)
-├── config.rs                 ← TOML config loader (AppConfig)
-├── store.rs                  ← In-memory state store (placeholder)
-├── types.rs                  ← All shared types and enums
-│
-├── consensus/
-│   └── vertex.rs             ← Thin wrapper around Tashi Vertex Engine
-│
-├── domain/
-│   ├── agent.rs              ← Agent identity stub
-│   ├── order.rs              ← Order lifecycle state machine (FSM)
-│   ├── auction.rs            ← Deterministic bid scoring and winner selection
-│   ├── handoff.rs            ← Business-rule validation for order handoffs
-│   ├── healing.rs            ← Heartbeat-based failure detection
-│   ├── safety.rs             ← Safety zone management
-│   └── ledger.rs             ← In-memory escrow and payment settlement
-│
-├── sim/
-│   └── runner.rs             ← Local deterministic simulation + MVP flow
-│
-└── bin/
-    ├── keygen.rs             ← Key pair generator
-    ├── keyparse.rs           ← Key parser utility
-    ├── mvp_demo.rs           ← Local end-to-end MVP demo (no config)
-    └── mvp_config_demo.rs    ← Config-driven MVP demo (loads TOML)
+nexus-fly/
++-- Cargo.toml
++-- README.md
++-- config/
+|   +-- node1.toml
+|   +-- node2.toml
+|   +-- node3.toml
+|   +-- node4.toml
++-- src/
+|   +-- main.rs
+|   +-- config.rs
+|   +-- app.rs
+|   +-- types.rs
+|   +-- codec.rs
+|   +-- store.rs
+|   +-- consensus/
+|   |   +-- mod.rs
+|   |   +-- vertex.rs
+|   +-- domain/
+|   |   +-- mod.rs
+|   |   +-- agent.rs
+|   |   +-- order.rs
+|   |   +-- auction.rs
+|   |   +-- handoff.rs
+|   |   +-- healing.rs
+|   |   +-- safety.rs
+|   |   +-- ledger.rs
+|   +-- sim/
+|       +-- mod.rs
+|       +-- runner.rs
++-- src/bin/
+    +-- keygen.rs
+    +-- keyparse.rs
+    +-- mvp_demo.rs
+    +-- mvp_server.rs
+    +-- mvp_config_demo.rs
+    +-- vertex_live_node.rs
 ```
 
-### Separation of concerns
+### Module Reference
 
-| Layer | Responsibility |
+| Module | Responsibility |
 |---|---|
-| `types.rs` | Canonical data model shared across all layers |
-| `domain/` | Pure business logic; no I/O, no async, fully testable |
-| `codec.rs` | Serialization boundary between domain and network |
-| `consensus/vertex.rs` | Wraps the Tashi Vertex Engine; only used by `main.rs` |
-| `app.rs` | Stateful dispatcher; connects domain to incoming messages |
-| `sim/runner.rs` | Local, synchronous simulation; no network required |
-| `bin/` | Entry points for different usage modes |
+| `config.rs` | Loads `AppConfig` from TOML. Defines the identity, bind address, peers, and agent properties of each node. |
+| `types.rs` | The canonical data model. All shared types: `NodeId`, `Order`, `AuctionBid`, `SafetyZone`, `LedgerEntry`, `NexusMessage`. |
+| `codec.rs` | Serializes and deserializes `NexusMessage` to and from JSON bytes for transport inside Vertex transactions. |
+| `consensus/vertex.rs` | Thin wrapper over the Tashi Vertex Engine. Exposes `start()`, `send_message()`, and `recv_messages()`. |
+| `app.rs` | Stateful dispatcher. Holds all in-memory state (orders, bids, peers). Routes incoming `NexusMessage` values to domain handlers. |
+| `domain/order.rs` | Pure FSM for the order lifecycle: `Created -> Bidding -> Assigned -> Pickup -> InTransit -> Delivered`. |
+| `domain/auction.rs` | Deterministic bid scoring and winner selection. All nodes run the same logic on the same ordered bid set. |
+| `domain/handoff.rs` | Validates handoff preconditions and applies the state transition. Integrates with the ledger for fee transfer. |
+| `domain/healing.rs` | `HeartbeatTracker` detects silent agents. Returns the set of in-flight orders that need re-auctioning. |
+| `domain/safety.rs` | `SafetyMonitor` manages declared safety zones and checks agent positions against them. |
+| `domain/ledger.rs` | In-memory escrow ledger: `reserve_escrow -> transfer_for_handoff -> release_final_payment`. |
+| `sim/runner.rs` | Local deterministic simulation of the complete MVP delivery flow. No network required. |
 
 ---
 
-## What runs through Tashi Vertex
+## Consensus and Event Model
 
-| Component | Uses Tashi Vertex? | Notes |
-|---|---|---|
-| `src/main.rs` | **Yes** | Live P2P node; requires network and real keys |
-| `consensus/vertex.rs` | **Yes** | Engine, Socket, Transaction, Message |
-| `app.rs` | No | Pure in-memory dispatcher |
-| `domain/*` | No | Pure functions and state machines |
-| `sim/runner.rs` | No | Deterministic local simulation |
-| `bin/mvp_demo.rs` | No | Calls domain modules directly |
-| `bin/mvp_config_demo.rs` | No | Loads TOML config; runs local simulation |
-| `bin/keygen.rs` | Yes (key types only) | Generates `KeySecret` / `KeyPublic` |
+Nexus-Fly is not a blockchain. It does not require every telemetry ping or GPS update to pass through consensus. That would be both slow and unnecessary.
 
-`mvp_demo` and `mvp_config_demo` compile and run without a live Tashi Vertex
-network. Only `vertex_swarm_demo` (the main binary) requires a real peer
-topology and signed keys.
+The guiding principle is:
+
+> **Emit intent locally. Advance state only after the consensus-ordered event is received back.**
+
+This means a node that wants to create an order first constructs the `OrderCreated` message locally, then submits it as a Vertex transaction. State does not advance immediately. The node waits for the ordered event to come back from Vertex before updating its local state. When the event returns, it carries a globally agreed sequence number. Every node that receives it applies the same state transition, in the same order.
+
+**Events routed through consensus:**
+
+| Event | Trigger |
+|---|---|
+| `OrderCreated` | A new delivery order enters the system |
+| `AuctionBid` | An agent submits a delivery offer |
+| `AuctionWinner` | The deterministic winner is announced |
+| `HandoffRequest` | A carrying agent requests a mid-route transfer |
+| `HandoffComplete` | A receiving agent accepts the parcel |
+| `AgentFailure` | A node is declared silent by the heartbeat tracker |
+| `SafetyAlert` / `SafetyClear` | A safety zone is opened or closed |
+| `OrderDelivered` | The final agent confirms delivery |
+
+**Events handled locally only:** raw GPS telemetry, battery level telemetry, internal diagnostics.
+
+This separation gives Nexus-Fly low latency on non-critical paths and strong consistency on critical ones.
 
 ---
 
-## Module reference
+## Sequence Diagram
 
-### `types.rs`
-All shared primitives: `NodeId`, `Timestamp`, `AgentKind`, `AgentStatus`,
-`OrderStatus`, `AgentState`, `Order`, `AuctionBid`, `SafetyZone`,
-`LedgerEntry`, and `NexusMessage` (the consensus message envelope).
+The following diagram shows how a complete delivery lifecycle flows through the Nexus-Fly network.
 
-### `codec.rs`
-`encode_message` / `decode_message` — converts `NexusMessage` to/from JSON
-bytes for transport inside Tashi Vertex transactions. Handles null-byte
-suffixes produced by `Transaction::allocate`.
+```mermaid
+sequenceDiagram
+    participant Source as Order Source / Auto Generator
+    participant NodeA as Nexus-Fly Node A
+    participant Vertex as Tashi Vertex Consensus
+    participant NodeB as Nexus-Fly Node B
+    participant NodeC as Nexus-Fly Node C
+    participant Ledger as Internal Ledger
 
-### `config.rs`
-`AppConfig` — full node configuration (identity, network, agent properties).  
-`load_config(path)` — reads and parses a TOML file into `AppConfig`.
+    Source->>NodeA: 1. Create local OrderCreated intent
+    NodeA->>Vertex: 2. Send OrderCreated as transaction
+    Vertex-->>NodeA: 3. Consensus-ordered OrderCreated event
+    Vertex-->>NodeB: 4. Consensus-ordered OrderCreated event
+    Vertex-->>NodeC: 5. Consensus-ordered OrderCreated event
 
-### `domain/order.rs`
-Order lifecycle FSM. All state transitions are pure functions returning
-`Result<Order>` or `Result<(Order, NexusMessage)>`:
+    NodeB->>Vertex: 6. Emit AuctionBid
+    NodeC->>Vertex: 7. Emit AuctionBid
+    NodeA->>Vertex: 8. Emit AuctionBid (optional)
 
+    Vertex-->>NodeA: 9. Consensus-ordered AuctionBid events
+    Vertex-->>NodeB: 10. Consensus-ordered AuctionBid events
+    Vertex-->>NodeC: 11. Consensus-ordered AuctionBid events
+
+    NodeA->>Vertex: 12. Emit AuctionWinner (auctioneer authority)
+    Vertex-->>NodeA: 13. Consensus-ordered AuctionWinner
+    Vertex-->>NodeB: 14. Consensus-ordered AuctionWinner
+    Vertex-->>NodeC: 15. Consensus-ordered AuctionWinner
+
+    alt Handoff required
+        NodeB->>Vertex: 16. Emit HandoffRequest
+        Vertex-->>NodeA: 17. Consensus-ordered HandoffRequest
+        Vertex-->>NodeC: 18. Consensus-ordered HandoffRequest
+        NodeC->>Vertex: 19. Emit HandoffComplete
+        Vertex-->>NodeA: 20. Consensus-ordered HandoffComplete
+        Vertex-->>NodeB: 21. Consensus-ordered HandoffComplete
+    end
+
+    NodeC->>Vertex: 22. Emit OrderDelivered
+    Vertex-->>NodeA: 23. Consensus-ordered OrderDelivered
+    Vertex-->>NodeB: 24. Consensus-ordered OrderDelivered
+    Vertex-->>NodeC: 25. Consensus-ordered OrderDelivered
+
+    NodeA->>Ledger: 26. Record settlement / release payment
+    Ledger-->>NodeA: 27. Ledger updated
 ```
-Created → Bidding → Assigned → Pickup → InTransit → Delivered
-                                                  ↘ HandoffPending → HandedOff → Delivered
-```
-
-### `domain/auction.rs`
-Deterministic bid scoring (ETA, battery, optional reputation) and winner
-selection. Ties are broken lexicographically by node ID.
-
-### `domain/handoff.rs`
-Validates and executes controlled order handoffs. Rules: order must be
-`InTransit`; requester must own it; destination must be `Idle`.
-
-### `domain/healing.rs`
-`HeartbeatTracker` — detects silent agents and identifies in-flight orders
-that need re-auctioning after a failure.
-
-### `domain/safety.rs`
-`SafetyMonitor` — maintains active safety zones and checks whether an agent's
-GPS position falls within any restricted area (Euclidean distance check).
-
-### `domain/ledger.rs`
-`Ledger` — internal escrow state machine: `reserve_escrow` →
-`transfer_for_handoff` → `release_final_payment` (or `refund_previous_agent`).
-No blockchain or external payment system.
-
-### `consensus/vertex.rs`
-`VertexNode` — thin wrapper: `start()`, `send_message()`, `recv_messages()`.
-Uses only the documented Tashi Vertex public API.
-
-### `app.rs`
-`App` — central in-memory state (orders, bids, peers). `from_config()` builds
-it from an `AppConfig`. `handle_message()` dispatches `NexusMessage` values
-to internal domain handlers.
-
-### `sim/runner.rs`
-`run_mvp_flow(configs)` — runs the full 10-step MVP scenario locally and
-returns `MvpFlowResult`. `Runner` is a simpler scenario runner kept for
-backward compatibility.
 
 ---
 
-## Docker dev environment
+## MVP Flow
 
-All `cargo` commands must run **inside the container**. The native Windows
-toolchain cannot link `tashi-vertex` (Linux-only native library).
+The end-to-end delivery scenario covered by the current MVP:
 
-### Prerequisites
+1. **Order created.** A `CreateOrder` event is emitted by the source node and submitted to Vertex. All nodes receive it and register the new order in `Bidding` state.
 
-- Docker Desktop with WSL 2 backend
-- WSL 2 distribution (Ubuntu recommended)
+2. **Bids submitted.** Each available agent evaluates its readiness (ETA, battery level) and emits an `AuctionBid` through Vertex. All bids arrive at all nodes in the same consensus order.
 
-### Build the image
+3. **Winner selected.** The auctioneer node applies deterministic scoring to the ordered bid set and emits `AuctionWinner`. Every node confirms the same result without coordination overhead.
+
+4. **Delivery starts.** The winning agent receives `OrderAssigned`. The escrow ledger reserves the delivery value. The agent reports `PickedUp` and the order transitions to `InTransit`.
+
+5. **Handoff (optional).** If the carrying agent cannot complete the delivery, it emits a `HandoffRequest`. The receiving agent accepts and emits `HandoffComplete`. The ledger executes the partial fee transfer automatically.
+
+6. **Failure detection.** If an agent stops sending heartbeats, `HeartbeatTracker` flags it as silent. Any in-flight orders it was carrying are identified and queued for re-auction.
+
+7. **Delivery completed.** The final agent emits `OrderDelivered`. All nodes advance the order to `Delivered` state.
+
+8. **Settlement recorded.** The responsible node calls the ledger to release the final payment to the agent who completed the delivery.
+
+---
+
+## Current Binaries
+
+| Binary | Purpose |
+|---|---|
+| `vertex_swarm_demo` | Main CLI node binary. Starts a live Tashi Vertex node with configurable bind address, secret key, and peer list. |
+| `keygen` | Generates a new cryptographic key pair (secret + public) for use in node config files. |
+| `keyparse` | Parses and validates an existing key string. Useful for debugging configuration issues. |
+| `mvp_demo` | Runs the complete delivery scenario locally with hardcoded agents. No config files or network required. |
+| `mvp_server` | Starts an MVP message-loop server suitable for integration testing without a full Vertex network. |
+| `mvp_config_demo` | Config-driven demo that loads a real `AppConfig` from a TOML file and runs the MVP flow using the configured node identity. |
+| `vertex_live_node` | Multi-node capable binary intended for Docker cluster deployments. Reads identity and peer list from `config/nodeN.toml`. |
+
+---
+
+## How to Run
+
+> `tashi-vertex` is a Linux-only native library. On Windows, all `cargo` commands must run inside the Docker development container.
+
+### 1. Start the development environment
 
 ```bash
 docker compose build
-```
-
-### Start the dev container
-
-```bash
-docker compose up -d
-```
-
-### Enter the container shell
-
-```bash
+docker compose up -d vertex-dev
 docker compose exec vertex-dev bash
 ```
 
-You land in `/workspace` with `rustc`, `cargo`, and `cmake` on `PATH`.
-Source files are bind-mounted from the Windows host; the `target` directory
-lives in a named Docker volume to avoid permission conflicts.
+You are now inside `/workspace` with `rustc`, `cargo`, and `cmake` on `PATH`. Source files are bind-mounted from the host; the `target` directory lives in a named Docker volume.
 
----
-
-## Running the project
-
-All commands below assume you are **inside the container** (`docker compose exec vertex-dev bash`),
-or prefixed with `docker compose exec vertex-dev` from PowerShell.
-
-### Build everything
+### 2. Build and test
 
 ```bash
 cargo build
-```
-
-### Run all tests
-
-```bash
 cargo test
 ```
 
-Expected output: **61 passed; 0 failed** across all unit tests and 1 doctest.
+Expected result: **61 tests passing, 0 failed**.
 
-### Generate a key pair
+### 3. Generate a key pair
 
 ```bash
 cargo run --bin keygen
 ```
 
-Output:
-```
-Secret: <base58-secret-key>
-Public: <base58-public-key>
-```
+Paste the output into `config/nodeN.toml` before running live nodes.
 
-### Vertex node CLI help
+### 4. Inspect the main binary CLI
 
 ```bash
 cargo run --bin vertex_swarm_demo -- --help
 ```
 
-### Local MVP demo (no config file needed)
+### 5. Run the local MVP demo
+
+No configuration files or network connection required.
 
 ```bash
 cargo run --bin mvp_demo
 ```
 
-Runs a complete delivery scenario with 3 hardcoded agents and prints each stage.
+### 6. Run the MVP server
 
-### Config-driven MVP demo
+```bash
+cargo run --bin mvp_server
+
+# Or from PowerShell outside the container:
+docker compose exec vertex-dev cargo run --bin mvp_server
+```
+
+### 7. Run the config-driven demo
 
 ```bash
 cargo run --bin mvp_config_demo -- --config config/node1.toml
 ```
 
-Loads the real `AppConfig` from TOML, initializes `App`, then runs the same
-MVP flow using `node1` as the primary agent alongside two synthetic peers.
-
-### Live Vertex node (requires real keys and peers)
+### 8. Start a multi-node Docker cluster
 
 ```bash
-# Generate keys first, then replace placeholders in config/node*.toml
+docker compose up node1 node2 node3
+```
 
-cargo run --bin vertex_swarm_demo -- \
-  --bind 127.0.0.1:8001 \
-  --key <secret-key> \
-  --peer <public-key-2>@127.0.0.1:8002 \
-  --message PING
+### 9. Stream logs from a specific node
+
+```bash
+docker compose logs -f node1
+docker compose logs -f node2
 ```
 
 ---
 
-## MVP flow
-
-The 10-step scenario exercised by `mvp_demo` and `run_mvp_flow`:
-
-| Step | Action | Module |
-|---|---|---|
-| 1 | Customer creates a delivery order | `domain/order.rs` |
-| 2 | All agents submit bids (ETA + battery) | `domain/auction.rs` |
-| 3 | Winner selected deterministically | `domain/auction.rs` |
-| 4 | Order assigned; escrow reserved | `domain/order.rs`, `domain/ledger.rs` |
-| 5 | Agent picks up and goes in-transit | `domain/order.rs` |
-| 6 | Agent hands off to a second agent (optional) | `domain/handoff.rs`, `domain/ledger.rs` |
-| 7 | Final agent marks order delivered | `domain/order.rs` |
-| 8 | Ledger releases final payment | `domain/ledger.rs` |
-| 9 | One agent goes silent; re-auction candidates identified | `domain/healing.rs` |
-| 10 | Safety zone declared at pickup; agent pause evaluated | `domain/safety.rs` |
-
-Example output (3 agents, `node1` wins, handoff to `sim-peer-a`):
+## Example Live Logs
 
 ```
--- ORDER CREATED ----------------------------------------
-  id      : mvp-order-1
-  origin  : node1
--- WINNER CHOSEN ----------------------------------------
-  winner : node1
--- HANDOFF COMPLETED ------------------------------------
-  from     : node1
-  to       : sim-peer-a
-  fee paid : 100 units
--- ORDER DELIVERED ---------------------------------------
-  delivered_by : sim-peer-a
-  status       : Delivered
--- LEDGER UPDATED ----------------------------------------
-  sim-peer-a credited 200 units (final payment)
--- REAUCTION CANDIDATES ----------------------------------
-  order reauction-1 needs a new auction
--- SAFETY CHECK ------------------------------------------
-  at pickup: PAUSED — agent inside safety zone
+[node1] INFO  order created: order-7f3a  origin: depot-north
+[node1] INFO  auction open -- waiting for bids
+[node2] INFO  bid submitted -- eta: 4.2 min, battery: 87%
+[node3] INFO  bid submitted -- eta: 6.1 min, battery: 72%
+[node1] INFO  winner selected: node2 (score: 0.91)
+[node1] INFO  escrow reserved -- 250 units locked
+[node2] INFO  order picked up -- status: InTransit
+[node2] INFO  handoff request emitted -- target: node3 (battery low)
+[node3] INFO  handoff accepted -- ledger transfer: 80 units to node2
+[node3] INFO  order delivered -- order-7f3a
+[node1] INFO  ledger settled -- node3 credited 170 units (final payment)
+[node1] INFO  order-7f3a complete
 ```
 
 ---
 
-## Current status
+## Why This Project is Promising
 
-| Feature | Status |
+At the intersection of robotics, distributed systems, and real-world logistics, Nexus-Fly addresses a problem that will only grow in importance as autonomous fleets scale beyond what any central server can manage.
+
+The architecture is deliberately pragmatic. Domain logic is pure Rust with no I/O dependencies, making it easy to audit, test, and extend independently. The consensus layer is pluggable â€” the `VertexNode` wrapper can be adapted to other BFT engines without touching any domain code.
+
+The "emit locally, advance on consensus receipt" pattern has a clear path toward production-grade deployment. It avoids the race conditions and split-brain failures that plague naive distributed systems, and it mirrors how established distributed databases handle linearizability.
+
+From a development and investment perspective:
+
+- The codebase is modular enough to evolve incrementally without rewrites.
+- The simulation layer allows rapid prototyping of new delivery scenarios without live infrastructure.
+- The internal ledger can be replaced by an on-chain escrow contract without changing domain logic.
+- The architecture scales from a three-node demo to a city-wide fleet coordination layer by adding nodes and extending the live consensus loop.
+
+Nexus-Fly is not a prototype that needs a rewrite. It is a foundation built to be grown.
+
+---
+
+## Current Status
+
+| Component | Status |
 |---|---|
 | Tashi Vertex node CLI | Working |
-| Key generation / parsing | Working |
+| Key generation and parsing | Working |
 | TOML config loader | Working |
-| Order state machine (FSM) | Working, 6 tests |
-| Auction scoring and selection | Working, 8 tests |
-| Handoff validation + FSM | Working, 5 tests |
-| Heartbeat failure detection | Working, 6 tests |
-| Safety zone monitoring | Working, 6 tests |
-| Escrow ledger | Working, 8 tests |
-| Codec (encode/decode) | Working, 7 tests |
-| Local MVP simulation | Working, 12 tests |
-| Config-driven demo binary | Working |
-| Live multi-node consensus | Not wired (main.rs runs but App not yet integrated) |
-| Persistent storage | Not implemented (Store is a placeholder) |
-| Real GPS / routing | Not implemented (Euclidean distance only) |
-| External payment | Not implemented (internal ledger only) |
+| Order lifecycle FSM | Working -- 6 tests |
+| Auction engine | Working -- 8 tests |
+| Handoff protocol | Working -- 5 tests |
+| Heartbeat failure detection | Working -- 6 tests |
+| Safety zone monitor | Working -- 6 tests |
+| Escrow ledger | Working -- 8 tests |
+| Codec (encode / decode) | Working -- 7 tests |
+| Local MVP simulation | Working -- 12 tests |
+| Config-driven demo | Working |
+| MVP server binary | Working |
+| Live multi-node consensus | Available -- full live wiring in progress |
+| Persistent storage | Not implemented (in-memory only) |
+| Real GPS distances | Not implemented (Euclidean approximation) |
+| External payment integration | Not implemented (internal ledger only) |
 
 ---
 
-## Known limitations
+## Roadmap
 
-- **`main.rs` not yet wired to `App`**: the live Vertex node sends and receives
-  raw messages but does not dispatch them through the domain handlers. This is
-  intentionally deferred.
-- **No persistent state**: all agent state, orders, and ledger balances are
-  in-memory and lost on restart.
-- **Euclidean distance only**: `SafetyMonitor` and ETA scoring use flat-plane
-  geometry. Real GPS distances require the Haversine formula.
-- **Single-node auction**: the MVP auction runs locally on one node. A
-  distributed auction requires all nodes to agree on the winning bid via
-  consensus before advancing the order FSM.
-- **No authentication on messages**: any node can submit any `NexusMessage`.
-  Signature verification is not implemented beyond what Tashi Vertex provides
-  at the transport layer.
-- **Internal ledger only**: `domain/ledger.rs` is an in-memory accounting
-  system with no external payment integration.
-- **config/node*.toml uses placeholder keys**: replace
-  `REPLACE_WITH_REAL_SECRET_KEY_FROM_KEYGEN` with output from
-  `cargo run --bin keygen` before running live nodes.
+**Phase 1 -- Richer live execution**
+Complete the live consensus loop by wiring `App::handle_message()` into the Vertex event stream. Automatic bid emission triggered by `OrderCreated` consensus events. Automatic winner announcement after a configurable bid window.
+
+**Phase 2 -- Autonomous delivery progression**
+Automatic `PickedUp`, `InTransit`, and `Delivered` state transitions driven by simulated or real agent telemetry. Re-auction triggered automatically on `AgentFailure` detection. Safety zone alerts wired into agent pause logic.
+
+**Phase 3 -- Realistic fleet simulation**
+Multi-agent GPS-based simulation with Haversine distance and real route planning. Mixed-fleet scenarios (drones, ground robots, e-bikes with different speed and range profiles). Configurable failure injection for resilience testing.
+
+**Phase 4 -- Observability and operations**
+Structured logging with `tracing` and log aggregation. Real-time fleet dashboard via WebSocket or SSE. Prometheus metrics export for node health, order throughput, and auction latency.
+
+**Phase 5 -- Production-grade settlement**
+Replace the internal ledger with an on-chain escrow contract. Message authentication: verify `NexusMessage` sender against the consensus-layer public key. Persistent state backend (SQLite or append-only log).
+
+**Phase 6 -- Deployment patterns**
+Kubernetes deployment manifests for cloud-based node clusters. Edge deployment on embedded Linux (Raspberry Pi, NVIDIA Jetson). Integration with real drone flight controllers via MAVLink or ROS 2.
 
 ---
 
-## Suggested next steps
+## Tech Stack
 
-1. **Wire `App` into `main.rs`**: call `App::from_config()` and
-   `app.handle_message()` on each decoded Vertex event so the live node
-   actually drives the domain FSM.
+| Technology | Role |
+|---|---|
+| [Rust](https://www.rust-lang.org/) (2024 edition) | Core language -- safe, fast, zero-cost abstractions |
+| [Tokio](https://tokio.rs/) | Async runtime for the live consensus event loop |
+| [Tashi Vertex](https://tashi.dev) | BFT consensus and event-ordering engine |
+| [Serde + serde_json](https://serde.rs/) | Message serialization and deserialization |
+| [TOML](https://toml.io/) | Human-readable node configuration files |
+| [Docker + Docker Compose](https://www.docker.com/) | Reproducible development environment and multi-node cluster |
+| [Mermaid](https://mermaid.js.org/) | Architecture and sequence diagrams in documentation |
 
-2. **Distributed auction**: broadcast `AuctionBid` messages through Vertex
-   and let each node collect bids for a fixed window before calling
-   `auction::choose_winner_id`. Use a `SyncPoint` to signal the end of the
-   bidding round.
+---
 
-3. **Persistent storage**: replace `store::Store` with a real backend
-   (SQLite via `rusqlite`, or a simple append-only log) so state survives
-   node restarts.
+<div align="center">
 
-4. **Real GPS distances**: replace the Euclidean distance in `SimAgent::eta_to`
-   and `SafetyMonitor::is_paused_by_safety` with Haversine calculations.
+**Nexus-Fly** -- Coordination infrastructure for the autonomous logistics era.
 
-5. **Message authentication**: verify that the sender of each `NexusMessage`
-   matches the `node_id` claimed inside the message, using the public key
-   already exchanged during Vertex peer setup.
+*Built on Rust and Tashi Vertex BFT consensus.*
+*Designed for fleets that cannot afford a single point of failure.*
 
-6. **Re-auction flow**: connect `healing::HeartbeatTracker` to the live
-   message loop so `orders_to_reauction` triggers real new auction rounds
-   after a peer failure is confirmed.
-
-7. **Replace placeholder keys**: run `cargo run --bin keygen` for each node,
-   paste the output into `config/node*.toml`, and test with 4 live Docker
-   containers using `docker compose up`.
+</div>

@@ -100,14 +100,141 @@ VS Code will attach to the running `vertex-dev` service and install Rust Analyze
 
 ---
 
+## Multi-node distributed cluster (profile: cluster)
+
+Three `vertex_live_node` containers run simultaneously over Tashi Vertex BFT consensus.
+All containers share the host network stack (`network_mode: host`) so that they can reach
+each other via `127.0.0.1:800X` exactly as the config files specify.
+
+> **Important**: stop the `vertex-dev` container before starting the cluster, or the
+> `run_live_cluster.sh` script inside it if running. Both compete for the same ports.
+>
+> ```bash
+> docker compose down
+> ```
+
+### 1 — Build the binary (once per code change)
+
+```bash
+docker compose --profile cluster up node-build
+```
+
+This compiles `vertex_live_node` into the shared `target` volume and exits.
+Wait for `Finished` before starting the nodes.
+
+### 2 — Start the 3-node cluster
+
+```bash
+docker compose --profile cluster up node1 node2 node3
+```
+
+### 3 — Follow logs (each service prefixed automatically)
+
+```bash
+# all nodes
+docker compose --profile cluster logs -f
+
+# single node
+docker compose --profile cluster logs -f node1
+```
+
+### 4 — Stop the cluster
+
+```bash
+docker compose --profile cluster down
+```
+
+### One-liner (build + run, waits for node-build to finish before nodes start)
+
+```bash
+docker compose --profile cluster up --wait node-build && docker compose --profile cluster up node1 node2 node3
+```
+
+### Expected output
+
+Within ~15 seconds the cluster reaches quorum and begins the full order lifecycle:
+
+```
+node1  | [t=11] local intent emitted  OrderCreated  id=node1-order-1
+node2  | [t=11] consensus event received  OrderCreated
+node2  | [t=11] queueing follow-up intent  AuctionBid
+node1  | [t=11] consensus event received  AuctionBid
+node1  | [auction] order node1-order-1 → winner=node2
+node2  | [node] order assigned  id=node1-order-1  winner=node2
+node2  | [node] order delivered  id=node1-order-1  by=node2
+```
+
+All three nodes update their `App` state only from consensus-ordered events — never from
+local intent generation.
+
+---
+
+## Multi-node distributed cluster (Docker Compose profiles)
+
+The `cluster` Compose profile starts three live `vertex_live_node` processes as
+separate Docker services, each loading its own TOML config.
+
+### Why `network_mode: host`?
+
+All node configs bind to `127.0.0.1:800X`.  Containers in their own network
+namespace cannot reach each other via loopback, so every cluster service runs
+with `network_mode: host` — they share the host's network stack, exactly like
+the bash script `run_live_cluster.sh` does inside a single container.
+
+> **Note:** do not start `vertex-dev` with an active cluster script at the same
+> time as the `cluster` profile services — both would compete for ports
+> 8001–8003 on the host network.
+
+### First-time image rebuild (needed once after this change)
+
+The Dockerfile now installs a second entrypoint script (`node-entrypoint.sh`).
+Rebuild the image before using the cluster profile:
+
+```bash
+docker compose build
+```
+
+### Start the live 3-node cluster
+
+```bash
+docker compose --profile cluster up
+```
+
+Compose will:
+1. Run `node-build` — compiles `vertex_live_node` once (exits 0 on success).
+2. Start `node1`, `node2`, `node3` in parallel once the build succeeds.
+3. Stream interleaved logs tagged `node1-1`, `node2-1`, `node3-1`.
+
+### Stop the cluster
+
+`Ctrl+C` in the same terminal, or from another shell:
+
+```bash
+docker compose --profile cluster down
+```
+
+### Run only specific nodes
+
+```bash
+docker compose --profile cluster up node-build node1 node2
+```
+
+### View logs for a single node
+
+```bash
+docker compose --profile cluster logs -f node1
+```
+
+---
+
 ## Port mapping
 
-| Host port | Container port | Purpose               |
-|-----------|----------------|-----------------------|
-| 8001      | 8001           | Vertex peer / node 1  |
-| 8002      | 8002           | Vertex peer / node 2  |
-| 8003      | 8003           | Vertex peer / node 3  |
-| 8004      | 8004           | Vertex peer / node 4  |
+| Host port | Service        | Purpose              |
+|-----------|----------------|----------------------|
+| 8001      | vertex-dev / node1 | Vertex peer node 1 |
+| 8002      | vertex-dev / node2 | Vertex peer node 2 |
+| 8003      | vertex-dev / node3 | Vertex peer node 3 |
+| 8004      | vertex-dev     | Vertex peer node 4   |
 
 ---
 
