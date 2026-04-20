@@ -5,7 +5,6 @@ use tracing::{info, warn};
 
 use crate::{
     config::AppConfig,
-    consensus::vertex::VertexNode,
     domain::auction,
     domain::order as order_fsm,
     types::{AgentState, AgentStatus, AuctionBid, NexusMessage, NodeId, Order, Timestamp},
@@ -64,33 +63,6 @@ impl App {
     /// Alias for [`App::new`] — initialise from a loaded [`AppConfig`].
     pub fn from_config(config: AppConfig) -> Result<Self> {
         Self::new(config)
-    }
-
-    // -----------------------------------------------------------------------
-    // Runtime loop wired to VertexNode
-    // -----------------------------------------------------------------------
-
-    /// Receive messages from `node` in a loop and dispatch each one to
-    /// [`App::handle_message`].
-    ///
-    /// Returns when the Vertex engine closes (stream exhausted) or on error.
-    pub async fn run_with_vertex(&mut self, node: &VertexNode) -> Result<()> {
-        info!(node_id = %self.config.node_id, "Entering Vertex message loop");
-        loop {
-            match node.recv_messages().await? {
-                None => {
-                    info!("Vertex engine closed, exiting loop");
-                    return Ok(());
-                }
-                Some(msgs) => {
-                    for msg in msgs {
-                        if let Err(e) = self.handle_message(msg) {
-                            warn!(error = %e, "handle_message returned error");
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // -----------------------------------------------------------------------

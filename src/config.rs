@@ -56,6 +56,7 @@ pub struct AppConfig {
 /// Read and parse a TOML node config file.
 ///
 /// ```no_run
+/// use vertex_swarm_demo::config::load_config;
 /// let cfg = load_config("config/node1.toml").unwrap();
 /// println!("{}", cfg.bind);
 /// ```
