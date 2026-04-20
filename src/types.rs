@@ -7,10 +7,8 @@ use serde::{Deserialize, Serialize};
 /// Node identifier – Base58 public key string.
 pub type NodeId = String;
 
-/// Raw transaction bytes produced / consumed by Tashi Vertex.
-pub type RawTransaction = Vec<u8>;
-
 /// Logical consensus round counter.
+#[allow(dead_code)]
 pub type Round = u64;
 
 /// Unix timestamp in seconds.
@@ -108,6 +106,7 @@ pub struct SafetyZone {
 }
 
 /// An immutable record appended to the local ledger after each confirmed round.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerEntry {
     pub round: Round,
@@ -117,6 +116,7 @@ pub struct LedgerEntry {
     pub recorded_at: Timestamp,
 }
 
+#[allow(dead_code)]
 impl LedgerEntry {
     pub fn new(round: Round, order_id: &str, actor: &str, event: &str, ts: Timestamp) -> Self {
         Self {

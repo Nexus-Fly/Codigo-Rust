@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// In-memory key-value store. Placeholder for future state management.
 #[derive(Debug, Default)]
 pub struct Store {
