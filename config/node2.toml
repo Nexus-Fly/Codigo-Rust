@@ -5,7 +5,7 @@
 # ─────────────────────────────────────────────
 
 node_id    = "node2"
-secret_key = "REPLACE_WITH_REAL_SECRET_KEY_FROM_KEYGEN"
+secret_key = "3d1RiRMXUVCfqv8GaH5m5cob4nhe8xaHiLeTBR8r9sE47vXrQsccZVFcubBbx2UksrzvPY"
 bind       = "127.0.0.1:8002"
 agent_kind = "Robot"
 vendor     = "FleetOps"
@@ -17,14 +17,9 @@ capacity   = 2
 [[peers]]
 id         = "node1"
 address    = "127.0.0.1:8001"
-public_key = "REPLACE_WITH_NODE1_PUBLIC_KEY"
+public_key = "aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTGRjUeqfLSEigUpaT8fuqbFfRsZFgTDvV7M1ePN6ppcs2UEXwf5G8VD2Vvs8Rq2e8A2Gg1kDCixGisETVZpwTDjio"
 
 [[peers]]
 id         = "node3"
 address    = "127.0.0.1:8003"
-public_key = "REPLACE_WITH_NODE3_PUBLIC_KEY"
-
-[[peers]]
-id         = "node4"
-address    = "127.0.0.1:8004"
-public_key = "REPLACE_WITH_NODE4_PUBLIC_KEY"
+public_key = "aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTFwgkKE9h4Lv6FukUAcd1XAq1iLs2CP4gqgL8f2tgcaZEmLiWEq6fjwHVksnCWvE65HgPoTCQR3ee4JJxt5XdNMmZ"

@@ -5,7 +5,7 @@
 # ─────────────────────────────────────────────
 
 node_id    = "node1"
-secret_key = "REPLACE_WITH_REAL_SECRET_KEY_FROM_KEYGEN"
+secret_key = "3d1RiRMXUVdMdRdveF4K1XRqi5KPwJumqcExcx3wqVjr7jEx2JohfJbSJHgr9Q1zHJEmsk"
 bind       = "127.0.0.1:8001"
 agent_kind = "Drone"
 vendor     = "FleetOps"
@@ -17,14 +17,9 @@ capacity   = 1
 [[peers]]
 id         = "node2"
 address    = "127.0.0.1:8002"
-public_key = "REPLACE_WITH_NODE2_PUBLIC_KEY"
+public_key = "aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTHE68iyDATq2j16ksvDLMNjVLug6X42Fp8EBE7wf313kxvbBvvc7iFc6ddFCKLyV6GaHtFBgSWDKwBi7N2BPygype"
 
 [[peers]]
 id         = "node3"
 address    = "127.0.0.1:8003"
-public_key = "REPLACE_WITH_NODE3_PUBLIC_KEY"
-
-[[peers]]
-id         = "node4"
-address    = "127.0.0.1:8004"
-public_key = "REPLACE_WITH_NODE4_PUBLIC_KEY"
+public_key = "aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTFwgkKE9h4Lv6FukUAcd1XAq1iLs2CP4gqgL8f2tgcaZEmLiWEq6fjwHVksnCWvE65HgPoTCQR3ee4JJxt5XdNMmZ"
