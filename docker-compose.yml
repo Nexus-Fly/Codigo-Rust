@@ -1,4 +1,7 @@
 services:
+  # ── Interactive development shell ──────────────────────────────────────────
+  # Default service; started by plain `docker compose up -d`.
+  # Run cluster scripts (run_live_cluster.sh) or individual cargo commands here.
   vertex-dev:
     build:
       context: .
@@ -10,21 +13,112 @@ services:
     entrypoint: ["/usr/local/bin/dev-entrypoint.sh"]
     command: ["bash"]
     volumes:
-      # Bind-mount source so edits on the host are reflected immediately
       - .:/workspace
-      # Named volumes keep Cargo caches and build artifacts inside Docker,
-      # avoiding Windows/WSL path-permission conflicts
       - cargo_registry:/usr/local/cargo/registry
       - cargo_git:/usr/local/cargo/git
       - target:/workspace/target
-    ports:
-      - "8001:8001"
-      - "8002:8002"
-      - "8003:8003"
-      - "8004:8004"
+    # No ports: dev access is via `docker compose exec vertex-dev bash`.
+    # Exposing ports here would conflict with `network_mode: host` cluster
+    # services if both are started at the same time.
     environment:
       - CARGO_HOME=/usr/local/cargo
       - RUST_BACKTRACE=1
+
+  # ── Multi-node cluster (profile: cluster) ──────────────────────────────────
+  # Start with: docker compose --profile cluster up
+  # Do NOT run vertex-dev at the same time if it has cluster scripts running
+  # (both would compete for the same ports on the host network).
+  #
+  # Why network_mode: host?
+  #   All node configs bind to 127.0.0.1:800X.  Containers in their own
+  #   network namespace cannot reach each other via loopback addresses, so
+  #   all cluster services share the host network stack instead.
+  #
+  # Why node-build?
+  #   Three containers starting simultaneously would each invoke the Rust
+  #   compiler against the shared `target` volume, corrupting the build.
+  #   node-build compiles the binary once; the node services run it directly.
+
+  node-build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vertex_swarm_node_build
+    working_dir: /workspace
+    entrypoint: ["/usr/local/bin/dev-entrypoint.sh"]
+    command: ["cargo", "build", "--bin", "vertex_live_node"]
+    volumes:
+      - .:/workspace
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - target:/workspace/target
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUST_BACKTRACE=1
+    profiles: ["cluster"]
+
+  node1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    working_dir: /workspace
+    entrypoint: ["/usr/local/bin/node-entrypoint.sh"]
+    command: ["/workspace/target/debug/vertex_live_node", "--config", "config/node1.toml"]
+    volumes:
+      - .:/workspace
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - target:/workspace/target
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUST_BACKTRACE=1
+    depends_on:
+      node-build:
+        condition: service_completed_successfully
+    profiles: ["cluster"]
+
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    working_dir: /workspace
+    entrypoint: ["/usr/local/bin/node-entrypoint.sh"]
+    command: ["/workspace/target/debug/vertex_live_node", "--config", "config/node2.toml"]
+    volumes:
+      - .:/workspace
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - target:/workspace/target
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUST_BACKTRACE=1
+    depends_on:
+      node-build:
+        condition: service_completed_successfully
+    profiles: ["cluster"]
+
+  node3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    working_dir: /workspace
+    entrypoint: ["/usr/local/bin/node-entrypoint.sh"]
+    command: ["/workspace/target/debug/vertex_live_node", "--config", "config/node3.toml"]
+    volumes:
+      - .:/workspace
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - target:/workspace/target
+    environment:
+      - CARGO_HOME=/usr/local/cargo
+      - RUST_BACKTRACE=1
+    depends_on:
+      node-build:
+        condition: service_completed_successfully
+    profiles: ["cluster"]
 
 volumes:
   cargo_registry:
