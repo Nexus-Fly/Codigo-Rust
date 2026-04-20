@@ -58,6 +58,18 @@ pub struct AppConfig {
     /// `auto_order_source = true`. Defaults to 20 seconds.
     #[serde(default = "default_order_interval_secs")]
     pub order_interval_secs: u64,
+
+    // ── Auction behaviour ─────────────────────────────────────────────────
+    /// If true, this node automatically emits AuctionBid for every eligible
+    /// incoming order. Defaults to false.
+    #[serde(default)]
+    pub auto_bidder: bool,
+    /// If true, this node is the single designated auctioneer: it announces
+    /// AuctionWinner once sufficient bids are known for an order.
+    /// Exactly one node in the cluster should have this set to true.
+    /// Defaults to false.
+    #[serde(default)]
+    pub auto_auctioneer: bool,
 }
 
 fn default_order_interval_secs() -> u64 {

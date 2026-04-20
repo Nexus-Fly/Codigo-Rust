@@ -24,7 +24,7 @@ use vertex_swarm_demo::{
     codec::{decode_message, encode_message},
     config::load_config,
     domain::{auction, order as order_fsm},
-    types::{AgentStatus, AuctionBid, NexusMessage, OrderStatus, Timestamp},
+    types::{AuctionBid, NexusMessage, OrderStatus, Timestamp},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,13 +80,17 @@ async fn main() -> Result<()> {
     println!("[node] vertex engine started — node is live");
 
     // ── Runtime state (local to this binary, NOT App) ──────────────────────
-    let auto_order_source  = config.auto_order_source;
-    let order_interval     = config.order_interval_secs.max(1);
+    let auto_order_source = config.auto_order_source;
+    let order_interval    = config.order_interval_secs.max(1);
+    let auto_bidder       = config.auto_bidder;
+    let auto_auctioneer   = config.auto_auctioneer;
 
     let mut tick: u64 = 0;
     let mut order_seq: u64 = 0;
     // NexusMessages queued for transmission; drained one per tick.
     let mut pending_sends: VecDeque<NexusMessage> = VecDeque::new();
+    // Orders this node has already submitted a bid for (prevents duplicates).
+    let mut already_bid: HashSet<String> = HashSet::new();
     // Orders for which this node has already emitted AuctionWinner.
     let mut resolved_auctions: HashSet<String> = HashSet::new();
     // Orders for which this node is currently the winner and is delivering.
@@ -169,6 +173,9 @@ async fn main() -> Result<()> {
                                 &app,
                                 &msg,
                                 &node_id,
+                                auto_bidder,
+                                auto_auctioneer,
+                                &mut already_bid,
                                 &mut resolved_auctions,
                                 &mut delivering,
                             );
@@ -204,16 +211,19 @@ async fn main() -> Result<()> {
 // Intent generator
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Inspect the incoming consensus message (and current App state) to decide
-/// what follow-up intents this node should emit.
+/// Inspect the incoming consensus message and decide what follow-up intents
+/// this node should emit.
 ///
-/// Called **before** `app.handle_message` so the pre-update state is visible.
-/// Any returned messages are queued in `pending_sends`; they are transmitted
-/// one per tick — they are never applied directly to local App state.
+/// Called **before** `app.handle_message` so the pre-update view is visible.
+/// Returned messages are queued in `pending_sends` and transmitted one per
+/// tick. They are never applied directly to local App state.
 fn decide_follow_ups(
     app: &App,
     msg: &NexusMessage,
     node_id: &str,
+    auto_bidder: bool,
+    auto_auctioneer: bool,
+    already_bid: &mut HashSet<String>,
     resolved_auctions: &mut HashSet<String>,
     delivering: &mut HashSet<String>,
 ) -> Vec<NexusMessage> {
@@ -222,8 +232,8 @@ fn decide_follow_ups(
     match msg {
         // ── New order → submit a bid ───────────────────────────────────────
         NexusMessage::OrderCreated(order) => {
-            // Any node that is idle submits a bid.
-            if app.local_agent.status == AgentStatus::Idle && !is_busy(app, node_id) {
+            // Only configured bidders that haven't already bid for this order.
+            if auto_bidder && !already_bid.contains(&order.order_id) {
                 let (dx, dy) = (
                     app.local_agent.location.0 - order.pickup.0,
                     app.local_agent.location.1 - order.pickup.1,
@@ -231,60 +241,64 @@ fn decide_follow_ups(
                 let eta = ((dx * dx + dy * dy).sqrt() * 111_000.0 / 15.0)
                     .round()
                     .clamp(1.0, 3_600.0) as u32;
-                out.push(NexusMessage::AuctionBid(AuctionBid {
-                    order_id: order.order_id.clone(),
-                    bidder:   node_id.to_owned(),
-                    eta_s:    eta,
-                    battery_pct: app.local_agent.battery_pct,
+                let bid = NexusMessage::AuctionBid(AuctionBid {
+                    order_id:     order.order_id.clone(),
+                    bidder:       node_id.to_owned(),
+                    eta_s:        eta,
+                    battery_pct:  app.local_agent.battery_pct,
                     submitted_at: now_ts(),
-                }));
+                });
+                already_bid.insert(order.order_id.clone());
+                println!("[auction] automatic bid queued  order={}  eta={eta}s", order.order_id);
+                out.push(bid);
             }
         }
 
-        // ── Bid received → originator resolves the auction ─────────────────
+        // ── Bid received → auctioneer resolves the auction ─────────────────
+        //
+        // The designated auctioneer (auto_auctioneer=true) announces the
+        // winner once it has seen at least one bid for the order and the
+        // order is still open. It announces at most once per order.
         NexusMessage::AuctionBid(bid) => {
-            let already_resolved = resolved_auctions.contains(&bid.order_id);
-            if already_resolved {
+            if !auto_auctioneer || resolved_auctions.contains(&bid.order_id) {
                 return out;
             }
 
-            if let Some(order) = app.orders.get(&bid.order_id) {
-                let we_created = order.origin == node_id;
-                let still_open = matches!(order.status, OrderStatus::Created | OrderStatus::Bidding);
+            // Collect bids already in App state (pre-update) plus this one.
+            let mut all_bids = app
+                .bids
+                .get(&bid.order_id)
+                .cloned()
+                .unwrap_or_default();
+            all_bids.push(bid.clone());
 
-                if we_created && still_open {
-                    // Combine bids we already have with this new one.
-                    let mut all_bids = app
-                        .bids
-                        .get(&bid.order_id)
-                        .cloned()
-                        .unwrap_or_default();
-                    all_bids.push(bid.clone());
+            let order_open = app
+                .orders
+                .get(&bid.order_id)
+                .map(|o| matches!(o.status, OrderStatus::Created | OrderStatus::Bidding))
+                .unwrap_or(true); // unknown order → assume still open
 
-                    if let Some(winner) = auction::choose_winner_id(&all_bids) {
-                        println!(
-                            "[auction] order {} → winner={winner}",
-                            bid.order_id
-                        );
-                        resolved_auctions.insert(bid.order_id.clone());
-                        out.push(NexusMessage::AuctionWinner {
-                            order_id: bid.order_id.clone(),
-                            winner,
-                        });
-                    }
+            if order_open {
+                if let Some(winner) = auction::choose_winner_id(&all_bids) {
+                    println!(
+                        "[auction] automatic winner announced  order={}  winner={winner}  bids={}",
+                        bid.order_id,
+                        all_bids.len()
+                    );
+                    resolved_auctions.insert(bid.order_id.clone());
+                    out.push(NexusMessage::AuctionWinner {
+                        order_id: bid.order_id.clone(),
+                        winner,
+                    });
                 }
             }
         }
 
-        // ── We won → simulate delivery ─────────────────────────────────────
+        // ── We won → queue delivery ────────────────────────────────────────
         NexusMessage::AuctionWinner { order_id, winner } => {
             if winner == node_id && !delivering.contains(order_id) {
                 delivering.insert(order_id.clone());
                 println!("[node] order assigned  id={order_id}  winner={winner}");
-                // Queue the delivery confirmation. In a production system this
-                // would happen after physical pickup + transit; for the MVP
-                // simulation it fires after a fixed queue delay (pending_sends
-                // drains one message per tick so preceding items add latency).
                 out.push(NexusMessage::OrderDelivered {
                     order_id:     order_id.clone(),
                     delivered_by: node_id.to_owned(),
@@ -293,19 +307,15 @@ fn decide_follow_ups(
             }
         }
 
-        // ── Order delivered → log + remove from delivery tracker ───────────
+        // ── Order delivered ────────────────────────────────────────────────
         NexusMessage::OrderDelivered { order_id, delivered_by, .. } => {
             delivering.remove(order_id);
-            println!(
-                "[node] order delivered  id={order_id}  by={delivered_by}"
-            );
+            println!("[node] order delivered  id={order_id}  by={delivered_by}");
         }
 
-        // ── Handoff complete → log ─────────────────────────────────────────
+        // ── Handoff complete ───────────────────────────────────────────────
         NexusMessage::HandoffComplete { order_id, new_holder } => {
-            println!(
-                "[node] handoff completed  id={order_id}  new_holder={new_holder}"
-            );
+            println!("[node] handoff completed  id={order_id}  new_holder={new_holder}");
         }
 
         _ => {}

@@ -16,6 +16,11 @@ capacity   = 3
 
 # Order source disabled: this node only reacts to consensus events.
 auto_order_source   = false
+order_interval_secs = 10
+
+# This node participates in auctions as a bidder.
+auto_bidder         = true
+auto_auctioneer     = false
 
 [[peers]]
 id         = "node1"

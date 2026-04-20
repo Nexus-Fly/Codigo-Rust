@@ -16,7 +16,11 @@ capacity   = 1
 
 # This node generates new delivery orders automatically.
 auto_order_source   = true
-order_interval_secs = 20
+order_interval_secs = 10
+
+# This node bids on incoming orders and announces auction winners.
+auto_bidder         = true
+auto_auctioneer     = true
 
 [[peers]]
 id         = "node2"
