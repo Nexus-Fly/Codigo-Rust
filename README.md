@@ -24,7 +24,7 @@
 
 ## Overview
 
-**Nexus-Fly** is a distributed autonomous logistics coordination platform. It enables swarms of heterogeneous agents â€” drones, ground robots, and e-bikes â€” to coordinate order assignment, in-flight handoffs, failure recovery, and payment settlement **without relying on a central server**.
+**Nexus-Fly** is a distributed autonomous logistics coordination platform. It enables swarms of heterogeneous agents - drones, ground robots, and e-bikes - to coordinate order assignment, in-flight handoffs, failure recovery, and payment settlement **without relying on a central server**.
 
 Each node in the network participates equally. Critical operational events are ordered through **Tashi Vertex**, a Byzantine Fault Tolerant (BFT) consensus engine, ensuring that all nodes agree on the same sequence of actions even in the presence of network delays, node failures, or adversarial conditions.
 
@@ -34,7 +34,7 @@ Nexus-Fly is not a ride-sharing application. It is an infrastructure layer: a pr
 
 ## The Problem
 
-Modern autonomous delivery systems face a structural contradiction: they deploy independent mobile agents â€” drones, robots, cargo bikes â€” but coordinate them through centralized orchestration servers. This creates several compounding problems:
+Modern autonomous delivery systems face a structural contradiction: they deploy independent mobile agents - drones, robots, cargo bikes - but coordinate them through centralized orchestration servers. This creates several compounding problems:
 
 - **Single point of failure.** If the orchestration server goes down, the entire fleet is blind. No order can be created, assigned, or recovered.
 - **Poor coordination across heterogeneous fleets.** Drones, ground robots, and e-bikes have different capabilities, ranges, and charge cycles. Centralized systems struggle to handle this heterogeneity dynamically.
@@ -53,7 +53,7 @@ Nexus-Fly replaces the central orchestration server with a distributed event-ord
 Key design decisions:
 
 - **Distributed event coordination.** Critical events (order creation, bids, handoff requests, failures, deliveries) are submitted as consensus transactions. Every node receives the same ordered event stream.
-- **Deterministic auction-based assignment.** All nodes run identical auction logic on the same ordered bid set. No central authority decides â€” every node independently reaches the same conclusion.
+- **Deterministic auction-based assignment.** All nodes run identical auction logic on the same ordered bid set. No central authority decides - every node independently reaches the same conclusion.
 - **Cross-agent handoffs.** The handoff protocol validates preconditions (ownership, agent availability) and applies them as consensus-ordered state transitions, enabling safe mid-route parcel transfers.
 - **Self-healing recovery.** Heartbeat tracking detects silent agents. Failed deliveries are automatically flagged for re-auction without human intervention.
 - **Safety mesh.** Geographic safety zones can be declared by any node. Agents check their position against active zones before proceeding.
@@ -368,7 +368,7 @@ docker compose logs -f node2
 
 At the intersection of robotics, distributed systems, and real-world logistics, Nexus-Fly addresses a problem that will only grow in importance as autonomous fleets scale beyond what any central server can manage.
 
-The architecture is deliberately pragmatic. Domain logic is pure Rust with no I/O dependencies, making it easy to audit, test, and extend independently. The consensus layer is pluggable â€” the `VertexNode` wrapper can be adapted to other BFT engines without touching any domain code.
+The architecture is deliberately pragmatic. Domain logic is pure Rust with no I/O dependencies, making it easy to audit, test, and extend independently. The consensus layer is pluggable - the `VertexNode` wrapper can be adapted to other BFT engines without touching any domain code.
 
 The "emit locally, advance on consensus receipt" pattern has a clear path toward production-grade deployment. It avoids the race conditions and split-brain failures that plague naive distributed systems, and it mirrors how established distributed databases handle linearizability.
 
