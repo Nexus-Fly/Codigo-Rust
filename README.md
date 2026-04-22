@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <pre>
  ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗   ███████╗██╗     ██╗   ██╗
@@ -9,7 +9,7 @@
  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝     ╚══════╝   ╚═╝   
 </pre>
 
-### The coordination infrastructure for autonomous, serverless logistics fleets
+### The coordination infrastructure for autonomous fleets, built to the winning standard of The Vertex Swarm Challenge 2026
 
 [![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
 [![Tashi Vertex](https://img.shields.io/badge/Tashi_Vertex-0.13.0-blueviolet?style=for-the-badge)](https://tashi.dev)
@@ -24,7 +24,7 @@
 
 ## Overview
 
-**Nexus-Fly** is a distributed autonomous logistics coordination platform. It enables swarms of heterogeneous agents - drones, ground robots, and e-bikes - to coordinate order assignment, in-flight handoffs, failure recovery, and payment settlement **without relying on a central server**.
+**Nexus-Fly** is a distributed autonomous logistics coordination platform. Engineered to embody the winning principles of The Vertex Swarm Challenge 2026, it enables swarms of heterogeneous agents - drones, ground robots, and e-bikes - to coordinate order assignment, in-flight handoffs, failure recovery, and payment settlement **without relying on a central server**.
 
 Each node in the network participates equally. Critical operational events are ordered through **Tashi Vertex**, a Byzantine Fault Tolerant (BFT) consensus engine, ensuring that all nodes agree on the same sequence of actions even in the presence of network delays, node failures, or adversarial conditions.
 
